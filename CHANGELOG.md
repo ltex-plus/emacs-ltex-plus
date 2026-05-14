@@ -1,5 +1,10 @@
 # Change Log
 
+## [Unreleased]
+
+### Changed
+- Persistence files now use a `.eld` extension by default (`stored-dictionary.eld`, `enabled-rules.eld`, `disabled-rules.eld`, `hidden-false-positives.eld`). `.eld` is the conventional Emacs extension for `prin1`-serialised Lisp data and is mapped to `lisp-data-mode` by `auto-mode-alist`, so opening the files by hand (or via Finder/Explorer/Nautilus) gets proper highlighting. Extensionless files left over from earlier versions are renamed automatically on first startup; users who have customised the file paths to non-`.eld` values are left alone.
+
 ## [0.3.3] - 2026-05-03
 
 ### Fixed

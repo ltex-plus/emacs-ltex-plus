@@ -526,19 +526,19 @@ effectively a no-op by construction."
 ;;;; -- Dictionary Management --------------------------------------------------
 
 (defvar lsp-ltex-plus-dictionary-file
-  (expand-file-name "lsp-ltex-plus/stored-dictionary" user-emacs-directory)
+  (expand-file-name "lsp-ltex-plus/stored-dictionary.eld" user-emacs-directory)
   "Path to the external dictionary file (plist format).")
 
 (defvar lsp-ltex-plus-enabled-rules-file
-  (expand-file-name "lsp-ltex-plus/enabled-rules" user-emacs-directory)
+  (expand-file-name "lsp-ltex-plus/enabled-rules.eld" user-emacs-directory)
   "Path to the external enabled rules file (plist format).")
 
 (defvar lsp-ltex-plus-disabled-rules-file
-  (expand-file-name "lsp-ltex-plus/disabled-rules" user-emacs-directory)
+  (expand-file-name "lsp-ltex-plus/disabled-rules.eld" user-emacs-directory)
   "Path to the external disabled rules file (plist format).")
 
 (defvar lsp-ltex-plus-hidden-false-positives-file
-  (expand-file-name "lsp-ltex-plus/hidden-false-positives" user-emacs-directory)
+  (expand-file-name "lsp-ltex-plus/hidden-false-positives.eld" user-emacs-directory)
   "Path to the external hidden false positives file (plist format).")
 
 (defun lsp-ltex-plus--load-plist (file-path)
@@ -562,6 +562,32 @@ effectively a no-op by construction."
     (let ((print-length nil)
           (print-level nil))
       (prin1 plist (current-buffer)))))
+
+;; TODO(2027-05): Remove `lsp-ltex-plus--migrate-extensionless-file'
+;; and its caller in `lsp-ltex-plus--setup' once existing installs
+;; have migrated to the .eld extension.
+(defun lsp-ltex-plus--migrate-extensionless-file (current-path default-path)
+  "Move the pre-.eld counterpart of DEFAULT-PATH into place.
+Acts only when CURRENT-PATH equals DEFAULT-PATH — i.e. the user has not
+explicitly customised the file location.  Users who have chosen their
+own path are not affected.
+
+When CURRENT-PATH equals DEFAULT-PATH and the extensionless
+sibling of DEFAULT-PATH exists on disk:
+
+- if DEFAULT-PATH does not yet exist, rename the old file into
+  place;
+- if DEFAULT-PATH also exists, emit a message asking the user to
+  merge the two files manually; downstream code keeps reading
+  DEFAULT-PATH."
+  (when (equal current-path default-path)
+    (let ((old-path (file-name-sans-extension default-path)))
+      (when (file-exists-p old-path)
+        (if (file-exists-p default-path)
+            (message "[lsp-ltex-plus] Cannot migrate %s -> %s: both files exist; please merge them manually."
+                     old-path default-path)
+          (rename-file old-path default-path)
+          (message "[lsp-ltex-plus] Migrated %s -> %s" old-path default-path))))))
 
 (defun lsp-ltex-plus--merge-plists (p1 p2)
   "Merge plist P2 into P1 and return the result.
@@ -1247,6 +1273,18 @@ measurements."
                 #'lsp-ltex-plus--benchmark-outgoing)
     (advice-add 'lsp--on-diagnostics :after
                 #'lsp-ltex-plus--benchmark-diagnostics))
+
+  ;; TODO(2027-05): Remove this migration block (see
+  ;; `lsp-ltex-plus--migrate-extensionless-file').
+  (dolist (pair `((,lsp-ltex-plus-dictionary-file
+                   . ,(expand-file-name "lsp-ltex-plus/stored-dictionary.eld" user-emacs-directory))
+                  (,lsp-ltex-plus-enabled-rules-file
+                   . ,(expand-file-name "lsp-ltex-plus/enabled-rules.eld" user-emacs-directory))
+                  (,lsp-ltex-plus-disabled-rules-file
+                   . ,(expand-file-name "lsp-ltex-plus/disabled-rules.eld" user-emacs-directory))
+                  (,lsp-ltex-plus-hidden-false-positives-file
+                   . ,(expand-file-name "lsp-ltex-plus/hidden-false-positives.eld" user-emacs-directory))))
+    (lsp-ltex-plus--migrate-extensionless-file (car pair) (cdr pair)))
 
   (lsp-ltex-plus--load-external-settings)
 

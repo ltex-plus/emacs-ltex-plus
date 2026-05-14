@@ -372,10 +372,12 @@ Code actions update the relevant file and notify the server, so the change takes
 
 | File (under `~/.emacs.d/lsp-ltex-plus/`) | `:custom` variable (defcustom) | Written by code action? | Provenance |
 | :--- | :--- | :---: | :---: |
-| `stored-dictionary` | `lsp-ltex-plus-dictionary` | yes | **LTeX+ only** |
-| `enabled-rules` | `lsp-ltex-plus-enabled-rules` | no | LanguageTool |
-| `disabled-rules` | `lsp-ltex-plus-disabled-rules` | yes | LanguageTool |
-| `hidden-false-positives` | `lsp-ltex-plus-hidden-false-positives` | yes | **LTeX+ only** |
+| `stored-dictionary.eld` | `lsp-ltex-plus-dictionary` | yes | **LTeX+ only** |
+| `enabled-rules.eld` | `lsp-ltex-plus-enabled-rules` | no | LanguageTool |
+| `disabled-rules.eld` | `lsp-ltex-plus-disabled-rules` | yes | LanguageTool |
+| `hidden-false-positives.eld` | `lsp-ltex-plus-hidden-false-positives` | yes | **LTeX+ only** |
+
+The `.eld` extension is the Emacs convention for `prin1`-serialised Lisp data; opening one of these files (from Emacs or your OS file manager) gets `lisp-data-mode` automatically. Earlier versions of `lsp-ltex-plus` wrote the external files by default without an extension; if you upgraded from such an older version, these files will be renamed automatically the first time `lsp-ltex-plus` is loaded — no action required. If you customized the filenames, it is recommended moving the files to use the `.eld` extension.  
 
 #### Format
 
@@ -399,7 +401,7 @@ The meaning of each string is setting-specific:
 | `enabled-rules` / `disabled-rules` | a LanguageTool rule ID, e.g. `"EN_QUOTES"` |
 | `hidden-false-positives` | a JSON object of the form `{"rule":"RULE_ID","sentence":"REGEX"}`, e.g. `"{\"rule\":\"MORFOLOGIK_RULE_EN_US\",\"sentence\":\"^My LaTeX\\\\TeX command\\\\.$\"}"` |
 
-The on-disk files use the same Lisp representation — open `~/.emacs.d/lsp-ltex-plus/stored-dictionary` (or any of the others) in Emacs and you'll see a plain plist like:
+The on-disk files use the same Lisp representation — open `~/.emacs.d/lsp-ltex-plus/stored-dictionary.eld` (or any of the others) in Emacs and you'll see a plain plist like:
 
 ```elisp
 (:en-US ["Alberti" "elisp" "plist"] :it ["Caravaggio"])
@@ -439,7 +441,7 @@ For tweaks that only make sense in a single document, LTeX+ supports **magic com
 
 The comment syntax depends on the file's language — e.g. `% LTeX: rules-=EN_QUOTES` in LaTeX, `<!-- LTeX: rules-=EN_QUOTES -->` in Markdown, `# LTeX: rules-=EN_QUOTES` in Org-mode. See the [LTeX+ magic-comments documentation](https://ltex-plus.github.io/ltex-plus/advanced-usage.html#magic-comments) for the full syntax table and the other settings they can change (language, picky rules, LaTeX/Markdown parser tweaks, …).
 
-**No per-file support for hidden false positives.** Magic comments cover rules and the dictionary, but not `hiddenFalsePositives` — if you need file-local false-positive suppression, there is no upstream mechanism for it. Use `:custom` or the `hidden-false-positives` file for a global suppression, or disable the offending rule for the file instead.
+**No per-file support for hidden false positives.** Magic comments cover rules and the dictionary, but not `hiddenFalsePositives` — if you need file-local false-positive suppression, there is no upstream mechanism for it. Use `:custom` or the `hidden-false-positives.eld` file for a global suppression, or disable the offending rule for the file instead.
 
 ## Troubleshooting
 
