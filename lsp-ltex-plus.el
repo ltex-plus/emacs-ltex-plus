@@ -1035,6 +1035,44 @@ cause the throw to escape to the top level."
             (throw 'input :interrupted))))
     (lsp-request method params)))
 
+(defun lsp-ltex-plus--maybe-upstream-fixes-cache ()
+  "Placeholder probe for upstream `lsp-mode' fixes.  Currently returns nil.
+
+Five LSP-protocol bugs that this package previously worked around have
+since been fixed upstream in `lsp-mode' (all on master as of
+2026-05-15, commit 0951bf38):
+
+  - PR #5052 — bare-array CompletionItem[] responses
+  - PR #5055 — Kind-First routing (server requests vs client responses)
+  - PR #5056 — stale callbacks throwing after a sync request unwinds
+  - PR #5057 — resilient batch dispatch on framing errors and throws
+  - PR #5059 — empty-object capabilities preserved under `lsp-use-plists'
+
+When this probe returns non-nil the package will (a) skip applying the
+three `:override' advices in `lsp-ltex-plus--apply-lsp-mode-patch' and
+emit a deprecation log if `lsp-ltex-plus-apply-kind-first-patch' is
+still set, and (b) skip `lsp-ltex-plus--restore-completion-capability'
+on server init.
+
+For now the function returns nil unconditionally because none of these
+PRs introduces a distinctive symbol that survives byte/native
+compilation and lives in a file `lsp-mode' loads by default.  A future
+commit on `lsp-mode' master is likely to add such a symbol, at which
+point this placeholder can be replaced with a one-line `fboundp' or
+`boundp' check.
+
+Until then the user-facing recommendation in the README is to install
+`lsp-mode' from a commit on or after 0951bf38 (2026-05-15) and remove
+`lsp-ltex-plus-apply-kind-first-patch' from their config.  On a recent
+`lsp-mode' the patches in this package are effectively a no-op anyway:
+the `:override' advices replace upstream code that already mirrors what
+the patches do.  Nothing breaks if the user leaves the option enabled.
+The recommendation to disable it is purely about being future-proof:
+keep the configuration tied to the upstream implementation that is now
+fixed, rather than carrying a local patch that no longer adds value
+and could in principle drift from upstream over time."
+  nil)
+
 (defun lsp-ltex-plus--apply-lsp-mode-patch ()
   "Apply the protocol patches to `lsp-mode'.
 These patch `lsp--parser-on-message', `lsp--create-filter-function',
