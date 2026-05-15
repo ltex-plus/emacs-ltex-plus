@@ -42,7 +42,7 @@ The most significant technical difference is the inclusion of several **Protocol
       ...
       (lsp-notify "workspace/didChangeConfiguration" '(:settings nil)))
     ```
-    *Source: `lsp-ltex-plus.el`, lines [394-408](https://github.com/alberti42/emacs-ltex-plus/blob/db37bf3af620fbd21377999b22ad426fe7db2293/lsp-ltex-plus.el#L394-L408)*
+    *Source: `lsp-ltex-plus.el`, lines [394-408](https://github.com/ltex-plus/emacs-ltex-plus/blob/db37bf3af620fbd21377999b22ad426fe7db2293/lsp-ltex-plus.el#L394-L408)*
 *   **`lsp-ltex` (Passive):** The original client updates local variables but does not send the `didChangeConfiguration` notification, relying instead on the server's next polling interval or a manual restart.
     ```elisp
     (lsp-defun lsp-ltex--code-action-add-to-dictionary ((&Command :arguments?))

@@ -5,7 +5,7 @@
 ;; Version: 0.3.4
 ;; Package-Requires: ((emacs "27.1") (lsp-mode "6.0"))
 ;; Keywords: lsp, grammar, spelling, convenience
-;; URL: https://github.com/alberti42/emacs-ltex-plus
+;; URL: https://github.com/ltex-plus/emacs-ltex-plus
 
 ;; This Source Code Form is subject to the terms of the Mozilla Public
 ;; License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -1323,7 +1323,7 @@ measurements."
                  "in your installed `lsp-mode'. Remove this option from your "
                  "config; it defaults to nil. If you believe the patch is "
                  "still needed, please open an issue at "
-                 "https://github.com/alberti42/emacs-ltex-plus."))
+                 "https://github.com/ltex-plus/emacs-ltex-plus."))
       (lsp-ltex-plus--apply-lsp-mode-patch)))
 
   ;; Progress-silencing advice — only installed when the user has opted
@@ -1605,7 +1605,7 @@ silently."
                 (message
                  (concat "[lsp-ltex-plus] Aborting: %s not found on PATH.  "
                          "See installation instructions at "
-                         "https://github.com/alberti42/emacs-ltex-plus/#server-installation "
+                         "https://github.com/ltex-plus/emacs-ltex-plus/#server-installation "
                          "or set `lsp-ltex-plus-ls-plus-executable' to the absolute path of the binary.")
                  lsp-ltex-plus-ls-plus-executable)
                 (setq lsp-ltex-plus-mode nil))

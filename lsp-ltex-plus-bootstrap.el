@@ -4,7 +4,7 @@
 ;; Maintainer: Andrea Alberti <a.alberti82@gmail.com>
 ;; Version: 0.3.4
 ;; Keywords: lsp, grammar, spelling, convenience
-;; URL: https://github.com/alberti42/emacs-ltex-plus
+;; URL: https://github.com/ltex-plus/emacs-ltex-plus
 
 ;; This Source Code Form is subject to the terms of the Mozilla Public
 ;; License, v. 2.0. If a copy of the MPL was not distributed with this
