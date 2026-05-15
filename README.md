@@ -65,7 +65,21 @@ Before using this package, you need:
 
 1.  **LTeX+ Language Server:** This is the core engine that performs the grammar checks. See [Server Installation](#server-installation) below.
 2.  **Java:** LTeX+ requires **Java 21** or higher. Most platform-specific releases of LTeX+ include a bundled Java runtime, so you don't necessarily need to install it separately. See [Java Runtime Configuration](#3-java-runtime-configuration) for details.
-3.  **Emacs lsp-mode:** This package is an extension for `lsp-mode` (version 6.0 or higher). Therefore, `lsp-mode` must be installed and available before `lsp-ltex-plus` can function.
+3.  **Emacs lsp-mode:** This package is an extension for `lsp-mode` (version 6.0 or higher). Therefore, `lsp-mode` must be installed and available before `lsp-ltex-plus` can function. We strongly recommend a recent build — see [Recommended `lsp-mode` Revision](#recommended-lsp-mode-revision) below.
+
+### Recommended `lsp-mode` Revision
+
+Five LSP-protocol bugs that this package historically worked around have since been fixed upstream:
+
+| PR | Fix |
+|---|---|
+| [#5052](https://github.com/emacs-lsp/lsp-mode/pull/5052) | Treat bare-array `CompletionItem[]` responses as complete completion lists. |
+| [#5055](https://github.com/emacs-lsp/lsp-mode/pull/5055) | Classify JSON-RPC messages by `method` before `id` (Kind-First routing) — fixes deadlocks on ID collisions between server and client. |
+| [#5056](https://github.com/emacs-lsp/lsp-mode/pull/5056) | Ignore stale callbacks that arrive after a synchronous request has already unwound. |
+| [#5057](https://github.com/emacs-lsp/lsp-mode/pull/5057) | Keep dispatching messages in a batch when an earlier one throws or fails framing. |
+| [#5059](https://github.com/emacs-lsp/lsp-mode/pull/5059) | Preserve empty-object capabilities (e.g. `completionProvider: {}`) under `lsp-use-plists`. |
+
+All five are present on `lsp-mode` master from commit [`0951bf38`](https://github.com/emacs-lsp/lsp-mode/commit/0951bf38) (2026-05-15) onward. Installing a recent `lsp-mode` and **leaving `lsp-ltex-plus-apply-kind-first-patch` out of your config** (it defaults to `nil`) is the recommended setup. As of today the option `lsp-ltex-plus-apply-kind-first-patch` is therefore **deprecated**: setting it to `t` against a recent `lsp-mode` only duplicates upstream fixes (harmless, just redundant), and the option will be removed once the package's `Package-Requires` minimum is bumped past commit `0951bf38`.
 
 ## Server Installation
 
