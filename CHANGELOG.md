@@ -3,6 +3,26 @@
 ## [Unreleased]
 
 
+
+## [0.3.5] - 2026-05-15
+
+### Changed
+- **Repository moved to the `ltex-plus` GitHub organization.** New canonical URL: <https://github.com/ltex-plus/emacs-ltex-plus>. The `ltex-plus` org now hosts the LTeX+ ecosystem together — the `ltex-ls-plus` server, the VS Code client `vscode-ltex-plus`, and this Emacs client. GitHub continues to redirect the old `alberti42/emacs-ltex-plus` URL for clones and external links, so existing `git remote`s, stars, forks, issues, and PRs are preserved. In-repo `URL:` headers, README install snippets, and the deprecation-message body in `lsp-ltex-plus.el` have been updated to point at the new home.
+- **Tree-sitter major modes are now gated by per-symbol `fboundp` guards** rather than listed unconditionally. The package's minimum-Emacs floor stays at 27.1, but entries for `bash-ts-mode`, `c-ts-mode`, `python-ts-mode`, and 14 others (built-ins added in Emacs 29.1 / 30.1, plus the third-party-or-builtin `csharp-mode`) are appended to `lsp-ltex-plus-major-modes` only when the corresponding mode symbol is actually `fboundp`. Users on Emacs 27/28 with a third-party tree-sitter mode installed still get their entry; users on Emacs 29.1+ or 30.1+ get the built-ins automatically; users on older Emacs without those modes simply see them skipped. This is also the gating pattern that `package-lint` requires for version-introduced symbols.
+- **Prerequisites section in the README reorganised** to follow the dependency chain (Emacs → lsp-mode → server → Java) and to make the Emacs minimum (27.1) the first explicit prerequisite.
+
+### Added
+- **`dev/package-lint.sh`**: development-time helper that clones `purcell/package-lint` into `/tmp` on first run, initialises the MELPA package archive, and invokes `package-lint-batch-and-exit` against both `.el` files. Pre-flight check before tagging releases or opening MELPA-bound PRs.
+- **`.dir-locals.el`**: sets `package-lint-main-file` to `lsp-ltex-plus.el` so `package-lint` correctly identifies `lsp-ltex-plus-bootstrap.el` as a secondary file of the same package (rather than complaining that its symbols don't start with the `lsp-ltex-plus-bootstrap-` prefix).
+
+### Fixed (MELPA-readiness pass)
+- Renamed three internal patch functions to comply with `package-lint`'s prefix discipline: `lsp-core--parser-on-message-patch` → `lsp-ltex-plus--parser-on-message-patch`, `lsp-core--create-filter-function-patch` → `lsp-ltex-plus--create-filter-function-patch`, and `lsp-core-request-while-no-input-patch` → `lsp-ltex-plus--request-while-no-input-patch` (also normalising the third one to the internal-symbol `--` double-dash convention). All advice-add call sites, docstring references, the CHANGELOG entry, and `CLAUDE.md` were updated to match.
+- Replaced the literal `~/.emacs.d/lsp-ltex-plus/` path inside the docstring of `lsp-ltex-plus-reload-and-notify-server` with a reference to `user-emacs-directory`, satisfying `package-lint`'s "no hardcoded user-directory paths" check. The runtime code already used `user-emacs-directory`; only the docstring still mentioned the literal path.
+- Documented the intentional `with-eval-after-load 'lsp-mode` at the bottom of `lsp-ltex-plus.el` with an inline comment explaining that this is the standard pattern for `:add-on?` `lsp-mode` clients (`lsp-pyright`, `lsp-haskell`, etc.). `package-lint` still emits a warning for the form, but the rationale is now in source.
+
+### Documentation
+- **Expanded `;;; Commentary:` section in `lsp-ltex-plus.el`** so it actually describes what the package does. It now covers: the markup and writing languages checked by default (LaTeX, Markdown, Org, RestructuredText, HTML, BibTeX, AsciiDoc, Typst, Quarto, Magit commit messages, plain text), the 30+ programming languages whose comments and string literals can be opted into, add-on integration with primary LSP servers, the offline-by-default mode (with optional remote LanguageTool server / Premium credentials), the multilingual per-language settings model, persistent external state, lazy loading via the two-file split, and a minimal `use-package` setup snippet. Replaces the previous design-memo-style commentary that was effectively user-invisible.
+
 ## [0.3.4] - 2026-05-15
 
 ### Deprecated
