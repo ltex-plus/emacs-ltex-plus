@@ -2,6 +2,7 @@
 
 ;; Author: Andrea Alberti <a.alberti82@gmail.com>
 ;; Maintainer: Andrea Alberti <a.alberti82@gmail.com>
+;; Assisted-by: Claude:claude-opus-4-7
 ;; Version: 0.3.5
 ;; Package-Requires: ((emacs "27.1") (lsp-mode "6.0"))
 ;; Keywords: lsp, grammar, spelling, convenience
