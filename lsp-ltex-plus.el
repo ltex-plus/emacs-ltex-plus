@@ -1244,9 +1244,9 @@ ORIG-FN for every other WORKSPACE."
 ;; implicitly, so the debug user gets the benchmark "for free".
 ;;
 ;; Flipping `lsp-ltex-plus-show-latency' later in the session does not install
-;; the advice retroactively: `lsp-ltex-plus--setup' fires once, via
-;; `with-eval-after-load', when `lsp-mode' is first loaded, and is not
-;; re-entered by `lsp-restart-workspace' (that only restarts the server
+;; the advice retroactively: `lsp-ltex-plus--setup' fires once at
+;; package load time, and is not re-entered by `lsp-restart-workspace'
+;; (that only restarts the server
 ;; process).  To start measuring mid-session, either re-evaluate the two
 ;; `advice-add' forms below or call `lsp-ltex-plus--setup' again (it is
 ;; idempotent).  This prevent the benchmark — a basic, investigative tool that
@@ -1744,15 +1744,12 @@ silently."
               (flymake-start))))))))
 
 
-;; Register with lsp-mode after it has loaded.  This is the standard
-;; pattern for `:add-on?' lsp-mode clients (lsp-pyright, lsp-haskell,
-;; etc.) — we cannot call `lsp-register-client' at top level because it
-;; requires lsp-mode to be loaded, and we want lsp-mode to load lazily
-;; on first use rather than as a top-level side effect of requiring this
-;; package.  `package-lint' warns about `with-eval-after-load' in package
-;; code; this use is the documented exception.
-(with-eval-after-load 'lsp-mode
-  (lsp-ltex-plus--setup))
+;; Register with lsp-mode.  Since `lsp-mode' is `require'd at the top
+;; of this file, calling `lsp-register-client' (inside
+;; `lsp-ltex-plus--setup') at top level is safe.  This avoids the
+;; `package-lint' warning against `with-eval-after-load' in package
+;; code.
+(lsp-ltex-plus--setup)
 
 (provide 'lsp-ltex-plus)
 ;;; lsp-ltex-plus.el ends here
