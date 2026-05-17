@@ -96,16 +96,19 @@
 (defcustom lsp-ltex-plus-debug nil
   "When non-nil, enable verbose logging and JSON-RPC tracing.
 Enabling this automatically sets `lsp-log-io' to t and creates
-detailed log files in /tmp."
+detailed log files in the system temporary directory (see
+`temporary-file-directory')."
   :type 'boolean
   :group 'lsp-ltex-plus)
 
-(defcustom lsp-ltex-plus-server-input-log "/tmp/ltex-server-input.log"
+(defcustom lsp-ltex-plus-server-input-log
+  (expand-file-name "ltex-server-input.log" (temporary-file-directory))
   "Log file for JSON-RPC input received by the server (from Emacs)."
   :type 'file
   :group 'lsp-ltex-plus)
 
-(defcustom lsp-ltex-plus-server-output-log "/tmp/ltex-server-output.log"
+(defcustom lsp-ltex-plus-server-output-log
+  (expand-file-name "ltex-server-output.log" (temporary-file-directory))
   "Log file for JSON-RPC output produced by the server (to Emacs)."
   :type 'file
   :group 'lsp-ltex-plus)
@@ -1383,7 +1386,8 @@ measurements."
     (setq lsp-ltex-plus-show-latency t)
     (when (string= lsp-ltex-plus-trace-server "off")
       ;; We already record the raw JSON-RPC exchange to
-      ;; /tmp/ltex-server-input.log and /tmp/ltex-server-output.log, therefore
+      ;; `lsp-ltex-plus-server-input-log' and `lsp-ltex-plus-server-output-log',
+      ;; therefore
       ;; setting "verbose" here would be too noisy for essentially no gain.  We
       ;; choose messages for pretty-print, which is especially useful for large
       ;; payloads.

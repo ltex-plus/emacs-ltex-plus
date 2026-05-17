@@ -643,7 +643,7 @@ A remote LanguageTool server typically adds 100–300 ms on top of both numbers,
 >
 > So if the experience feels laggy even though `ltex-ls-plus` reports a small number, the bottleneck is in the UI layer above LSP, not in the grammar checker below it. Tuning `lsp-idle-delay`, `flycheck-idle-change-delay`, and `lsp-ui-sideline-delay` usually helps more than replacing the checker with a faster one.
 
-Because the warm-path message fires after every check (i.e. on essentially every keystroke when `lsp-ltex-plus-check-frequency` is `"edit"` and the debounce interval is small), it is intended for investigation only. Turn the flag off again when you are done measuring. For richer diagnostic output — including entries in the `*lsp-ltex-plus::client*` log buffer and raw JSON-RPC dumps under `/tmp` — see `lsp-ltex-plus-debug` instead; the two flags are independent and can be combined.
+Because the warm-path message fires after every check (i.e. on essentially every keystroke when `lsp-ltex-plus-check-frequency` is `"edit"` and the debounce interval is small), it is intended for investigation only. Turn the flag off again when you are done measuring. For richer diagnostic output — including entries in the `*lsp-ltex-plus::client*` log buffer and raw JSON-RPC dumps in the system temp directory (see `lsp-ltex-plus-server-input-log` and `lsp-ltex-plus-server-output-log`) — see `lsp-ltex-plus-debug` instead; the two flags are independent and can be combined.
 
 ### Lsp-mode Protocol Patches
 
