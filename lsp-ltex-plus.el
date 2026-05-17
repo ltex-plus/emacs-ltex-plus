@@ -96,8 +96,8 @@
 (defcustom lsp-ltex-plus-debug nil
   "When non-nil, enable verbose logging and JSON-RPC tracing.
 Enabling this automatically sets `lsp-log-io' to t and creates
-detailed log files in the system temporary directory (see
-`temporary-file-directory')."
+detailed log files in the system temporary directory (see the
+variable `temporary-file-directory')."
   :type 'boolean
   :group 'lsp-ltex-plus)
 
