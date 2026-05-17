@@ -95,7 +95,7 @@
      (clojure-ts-mode        "clojure"          t)
      (coffee-mode            "coffeescript"     t)
      (common-lisp-mode       "lisp"             t)
-     ;; (emacs-lisp-mode     "lisp"             t)
+     (emacs-lisp-mode        "elisp"            t)
      (cperl-mode             "perl"             t)
      (dart-mode              "dart"             t)
      (dart-ts-mode           "dart"             t)

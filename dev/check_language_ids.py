@@ -44,6 +44,7 @@ ALIASES = {
     "xhtml",      # → html
     "plaintex",   # → latex
     "tex",        # → latex
+    "emacs-lisp", # → elisp
     "nop",        # special no-op parser, not a real language ID
 }
 

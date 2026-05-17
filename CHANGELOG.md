@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+### Added
+- **Emacs Lisp support.** `emacs-lisp-mode` is now registered in `lsp-ltex-plus-major-modes` with language ID `"elisp"`, matching the new Emacs Lisp parser merged into `ltex-ls-plus` upstream. Requires new LTeX+ v18.7+ (commits `590ed42` and `010af31f`). LTeX+ checks grammar inside Elisp comments and docstrings when `lsp-ltex-plus-check-programming-languages` is non-nil. The server also accepts `"emacs-lisp"` as an alias; this is recorded in `dev/check_language_ids.py` so the upstream sync check stays clean.
 
 
 ## [0.3.5] - 2026-05-15
