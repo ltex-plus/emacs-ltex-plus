@@ -1744,11 +1744,12 @@ silently."
               (flymake-start))))))))
 
 
-;; Register with lsp-mode.  Since `lsp-mode' is `require'd at the top
-;; of this file, calling `lsp-register-client' (inside
-;; `lsp-ltex-plus--setup') at top level is safe.  This avoids the
-;; `package-lint' warning against `with-eval-after-load' in package
-;; code.
+;; Initialize the lsp client.  At default settings this registers language IDs,
+;; loads persisted dictionaries/rules from disk, and calls
+;; `lsp-register-custom-settings' + `lsp-register-client'.  Optional features
+;; (protocol patches, progress-silencing advice, debug logging, latency
+;; benchmarks) are each gated behind a `defcustom' that defaults to off and
+;; execute only when the user opts in.
 (lsp-ltex-plus--setup)
 
 (provide 'lsp-ltex-plus)
