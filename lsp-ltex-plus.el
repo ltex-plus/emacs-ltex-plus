@@ -390,6 +390,29 @@ Use the same path as you would use for the JAVA_HOME environment variable."
   "Size of the LanguageTool ResultCache in sentences.
 Decreasing this might decrease RAM usage.  If you set this too small, checking
 time may increase significantly."
+
+(defcustom lsp-ltex-plus-max-fragment-size 20000
+  "Largest amount of text, in characters, sent to LanguageTool in one request.
+ltex-ls-plus caches results per paragraph and re-checks only the
+paragraphs you edited.  When several changed paragraphs sit next to
+each other they are batched into a single request (typically the
+first, whole-document check); text larger than this is split across
+several requests, but an individual paragraph is never split.  The
+default fits within the per-request character limit of the free
+remote LanguageTool service.  If you use a local server
+\(`lsp-ltex-plus-lt-server-uri' is nil) or have a Premium account,
+consider raising it to 60000.  This does not affect caching
+granularity, which is always per paragraph."
+  :type 'integer
+  :group 'lsp-ltex-plus)
+
+(defcustom lsp-ltex-plus-fragment-cache-ttl-minutes 30
+  "How long, in minutes, a document's cached fragment results are kept unused.
+The fragment cache lets ltex-ls-plus reuse the results of unchanged
+paragraphs after an edit.  Entries for the file you are actively
+editing stay warm; a document left untouched for longer than this is
+dropped from the cache.  A document's cache is also cleared as soon
+as the file is closed."
   :type 'integer
   :group 'lsp-ltex-plus)
 
@@ -1470,6 +1493,8 @@ measurements."
      ("ltex.java.initialHeapSize"                lsp-ltex-plus-java-initial-heap)
      ("ltex.java.maximumHeapSize"                lsp-ltex-plus-java-max-heap)
      ("ltex.sentenceCacheSize"                   lsp-ltex-plus-sentence-cache-size)
+     ("ltex.maxFragmentSize"                     lsp-ltex-plus-max-fragment-size)
+     ("ltex.fragmentCacheTtlMinutes"             lsp-ltex-plus-fragment-cache-ttl-minutes)
      ("ltex.completionEnabled"                   ,(lambda () (lsp-ltex-plus--bool lsp-ltex-plus-completion-enabled)))
      ("ltex.diagnosticSeverity"                  lsp-ltex-plus-diagnostic-severity)
      ("ltex.checkFrequency"                      lsp-ltex-plus-check-frequency)
@@ -1548,6 +1573,8 @@ measurements."
                                                                             :initialHeapSize ,lsp-ltex-plus-java-initial-heap
                                                                             :maximumHeapSize ,lsp-ltex-plus-java-max-heap)
                                                                :sentenceCacheSize ,lsp-ltex-plus-sentence-cache-size
+                                                               :maxFragmentSize ,lsp-ltex-plus-max-fragment-size
+                                                               :fragmentCacheTtlMinutes ,lsp-ltex-plus-fragment-cache-ttl-minutes
                                                                :completionEnabled ,(lsp-ltex-plus--bool lsp-ltex-plus-completion-enabled)
                                                                :diagnosticSeverity ,lsp-ltex-plus-diagnostic-severity
                                                                :checkFrequency ,lsp-ltex-plus-check-frequency
