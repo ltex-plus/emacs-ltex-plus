@@ -323,12 +323,12 @@ lsp-mode's machinery is built around `file://` URIs, so historically only buffer
 (setq lsp-ltex-plus-check-fileless-buffers nil)
 ```
 
-While enabled (i.e., with the recommended default), a file-less buffer whose major mode is in the enabled set is given a unique **synthetic `file://` URI** under `~/.emacs.d/lsp-ltex-plus/scratch/`, and all such buffers share a single `ltex-ls-plus` process (one JVM). No file is ever written there — the directory stays empty; the URI is only an identity the server uses to track the in-memory document. Checking, code actions, and diagnostics behave exactly as they do for real files.
+While enabled (i.e., with the recommended default), a file-less buffer whose major mode is in the enabled set is checked just like a file buffer, and all such buffers share a single `ltex-ls-plus` process. Nothing is ever written to disk. Checking, code actions, and diagnostics behave exactly as they do for real files.
 
 A few details worth knowing:
 
 - **Activation rules are the same as for files.** The buffer's major mode must be in the enabled set, and the programming-language gate still applies. Because `*scratch*` uses `lisp-interaction-mode` (a programming mode), it is auto-checked only when `lsp-ltex-plus-check-programming-languages` is *also* enabled — but an explicit `M-x lsp-ltex-plus-mode` in `*scratch*` always works regardless.
-- **Saving to a file is seamless.** If you later save a checked file-less buffer to a real path (e.g. `C-x C-w`), the synthetic identity is dropped, and the buffer is transparently re-checked under its real file URI.
+- **Saving to a file is seamless.** If you later save a checked file-less buffer to a real path (e.g. `C-x C-w`), it is transparently re-checked as a normal file.
 
 
 ## Customization
@@ -360,7 +360,7 @@ An empty space means the parameter has no direct counterpart at that layer: typi
 | `lsp-ltex-plus-debug` | R | When non-nil, enable verbose logging and JSON-RPC tracing. *Type:* boolean; *default:* `nil`. | | |
 | `lsp-ltex-plus-major-modes` | S† | List of `(major-mode language-id programming-p)` triples driving client activation. *Type:* list; *default:* ~80 entries covering markup and programming modes (defined in `lsp-ltex-plus-bootstrap.el`). | | |
 | `lsp-ltex-plus-check-programming-languages` | L† | When non-nil, enable grammar checking in comments of programming languages (disabled by default, matching LTeX+). *Type:* boolean; *default:* `nil`. | | |
-| `lsp-ltex-plus-check-fileless-buffers` | S† | When non-nil, also check buffers with no backing file (e.g. `*scratch*`, capture buffers). Each gets a synthetic `file://` URI under `~/.emacs.d/lsp-ltex-plus/scratch/` and they share one server process. See [Checking file-less buffers](#checking-file-less-buffers). *Type:* boolean; *default:* `t`. | | |
+| `lsp-ltex-plus-check-fileless-buffers` | S† | When non-nil, also check buffers with no backing file (e.g. `*scratch*`, capture buffers); all such buffers share one `ltex-ls-plus` process. See [Checking file-less buffers](#checking-file-less-buffers). *Type:* boolean; *default:* `t`. | | |
 | `lsp-ltex-plus-language` | L | The language LanguageTool should check against (e.g. `"en-US"`, `"de-DE"`). Valid codes are listed on the [LTeX+ supported-languages page](https://ltex-plus.github.io/ltex-plus/supported-languages.html); `"auto"` attempts language detection (not recommended — no spelling). *Type:* string; *default:* `"en-US"`. | X | X |
 | `lsp-ltex-plus-dictionary` | L | Additional words accepted as correctly spelled (language-specific). *Type:* plist; *default:* `nil`. See [External settings](#external-settings) for format and behaviour. | X | |
 | `lsp-ltex-plus-enabled-rules` | L | Language-specific list of rules to enable. *Type:* plist; *default:* `nil`. See [External settings](#external-settings). | X | X |
@@ -404,7 +404,7 @@ An empty space means the parameter has no direct counterpart at that layer: typi
 >
 > **†** on `lsp-ltex-plus-check-programming-languages` — re-read at every buffer (re-)activation rather than on every check. Already-active buffers are unaffected by a mid-session flip; newly opened or toggled buffers see the new value.
 >
-> **†** on `lsp-ltex-plus-check-fileless-buffers` — gates the dispatcher and the mode body at activation time, not on every check. The synthetic-root directory it relies on is created during `lsp-ltex-plus--setup`, so a mid-session flip from nil to non-nil also wants `M-: (lsp-ltex-plus--setup)` (or a restart) the first time. Already-active buffers are unaffected; newly opened or toggled file-less buffers see the new value.
+> **†** on `lsp-ltex-plus-check-fileless-buffers` — gates the dispatcher and the mode body at activation time, not on every check. Already-active buffers are unaffected by a mid-session flip; newly opened or toggled file-less buffers see the new value.
 
 </details>
 
@@ -616,13 +616,7 @@ Unless you have a specific need to isolate projects (e.g., you are experimenting
 
 ### No Grammar Checking in Scratch or Anonymous Buffers
 
-**Symptom:** You write prose in `*scratch*` (or any buffer not visiting a file), enable `lsp-ltex-plus-mode` manually, and nothing happens — no lighter, no diagnostics.
-
-**Explanation:** `lsp-mode` identifies every document by a `file://` URI derived from the buffer's file name. A buffer without a file name cannot form such a URI, so the `textDocument/didOpen` handshake that would carry the buffer contents to the server never happens. The grammar-check engine itself has no problem with orphan buffers — it operates purely on the text content passed over the wire — but the LSP plumbing around it does.
-
-**Workaround:** save the buffer to a file first. Even a throwaway path under `/tmp` is enough to satisfy the URI requirement, after which `lsp-ltex-plus-mode` activates normally.
-
-Supporting orphan buffers without requiring a save is tracked as a future enhancement (synthetic `untitled:` URIs or transparent temp-file mirroring).
+File-less buffers are checked by default — see [Checking file-less buffers](#checking-file-less-buffers). If one isn't being checked, verify that `lsp-ltex-plus-check-fileless-buffers` is non-nil (the default) and that the buffer's major mode is in the enabled set. Note that `*scratch*` uses `lisp-interaction-mode` (a programming mode), so it is auto-checked only when `lsp-ltex-plus-check-programming-languages` is also enabled; an explicit `M-x lsp-ltex-plus-mode` always works.
 
 ### Word Completion Not Working with `lsp-ltex-plus-completion-enabled`
 

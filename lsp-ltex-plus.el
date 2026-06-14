@@ -468,8 +468,9 @@ Possible severities are \"error\", \"warning\", \"information\", and \"hint\"."
 (defcustom lsp-ltex-plus-check-fileless-buffers t
   "When non-nil, grammar-check buffers that have no backing file.
 File-less buffers (e.g. *scratch*, capture buffers) in a recognized major
-mode are given a synthetic file:// URI under `lsp-ltex-plus-scratch-root'
-and share a single workspace, so one server process serves them all.
+mode are given a synthetic file:// URI under the variable
+`temporary-file-directory' and share a single workspace, so one server
+process serves them all.
 
 This is orthogonal to `lsp-ltex-plus-check-programming-languages': a
 file-less buffer in a programming mode (such as *scratch*, which uses
@@ -679,14 +680,6 @@ effectively a no-op by construction."
 (defvar lsp-ltex-plus-hidden-false-positives-file
   (expand-file-name "lsp-ltex-plus/hidden-false-positives.eld" user-emacs-directory)
   "Path to the external hidden false positives file (plist format).")
-
-(defvar lsp-ltex-plus-scratch-root
-  (expand-file-name "lsp-ltex-plus/scratch/" user-emacs-directory)
-  "Shared synthetic workspace root for file-less buffers.
-Must exist on disk: `lsp--start-workspace' binds `default-directory' to
-the workspace root when spawning the server process.  The directory is
-created (if missing) by `lsp-ltex-plus--setup' and stays empty — no file
-is ever written there.")
 
 (defun lsp-ltex-plus--load-plist (file-path)
   "Load a plist from FILE-PATH.  Return nil if it doesn't exist or fails."
@@ -1563,12 +1556,6 @@ measurements."
 
   (lsp-ltex-plus--load-external-settings)
 
-  ;; Ensure the shared synthetic root for file-less buffers exists, since
-  ;; `lsp--start-workspace' binds `default-directory' to it when spawning the
-  ;; server process.  Cheap and idempotent; the directory stays empty.
-  (unless (file-directory-p lsp-ltex-plus-scratch-root)
-    (make-directory lsp-ltex-plus-scratch-root t))
-
   (lsp-ltex-plus--log "Registering settings and client...")
   (lsp-ltex-plus--log "Registering ltex-ls-plus client (priority: -1)...")
   ;; Object- and boolean-typed fields are wrapped via the
@@ -1724,8 +1711,13 @@ measurements."
 ;;;; -- Activation -------------------------------------------------------------
 
 (defun lsp-ltex-plus--make-fileless-uri ()
-  "Return a fresh, unique synthetic file:// URI under the scratch root.
-The basename embeds the Emacs PID and a monotonic counter so distinct
+  "Return a fresh, unique synthetic file:// URI for a file-less buffer.
+For convenience, the path of the synthetic file is placed under the
+temporary directory that is defined by the variable
+`temporary-file-directory'.  The synthetic file is never read or
+written, only used as the document's identity, so any existing local
+directory works and the temp dir avoids creating one of our own.  The
+basename embeds the Emacs PID and a monotonic counter so distinct
 file-less buffers map to distinct documents inside the one shared
 workspace.  The buffer name is deliberately NOT used: it can be renamed,
 uniquified (\"foo<2>\"), or collide.  The \".txt\" suffix only keeps the
@@ -1735,11 +1727,11 @@ synthetic path well-formed — the wire language ID still comes from the
   ;; favour of the built-in `incf' added in Emacs 31.1, but `incf' does not
   ;; exist on our 27.1 floor, so neither macro is portable here.
   (lsp--path-to-uri
-   (expand-file-name (format "scratch-%d-%d.txt"
+   (expand-file-name (format "lsp-ltex-plus-scratch-%d-%d.txt"
                              (emacs-pid)
                              (setq lsp-ltex-plus--fileless-counter
                                    (1+ lsp-ltex-plus--fileless-counter)))
-                     lsp-ltex-plus-scratch-root)))
+                     temporary-file-directory)))
 
 (defun lsp-ltex-plus--setup-fileless-buffer ()
   "Give the current file-less buffer a synthetic identity for `lsp-mode'.
@@ -1844,9 +1836,10 @@ producing a \"redundant open text document\" warning from co-tenants.
 
 With EXPLICIT-ROOT non-nil, use it as the project root instead of
 deriving one from the variable `buffer-file-name'.  This is how
-file-less buffers attach: they all pass the shared
-`lsp-ltex-plus-scratch-root', so one server process serves them while
-their distinct synthetic URIs keep them as separate documents.
+file-less buffers attach: they all pass the variable
+`temporary-file-directory' as the shared root, so one server process
+serves them while their distinct synthetic URIs keep them as separate
+documents.
 
 If an ltex-ls-plus workspace already exists for the project root, the
 buffer is opened in it.  Otherwise, a new ltex-ls-plus connection is
@@ -1969,7 +1962,7 @@ silently."
               ;; the buffer stays file-less.
               (let ((buffer-file-name (lsp--uri-to-path lsp-ltex-plus--fileless-uri)))
                 (lsp-ltex-plus--rejoin-workspace
-                 (lsp-f-canonical lsp-ltex-plus-scratch-root)))
+                 (lsp-f-canonical temporary-file-directory)))
               (when lsp--buffer-workspaces
                 ;; The pass-through virtual buffer needs its `:workspaces' so
                 ;; `lsp-with-current-buffer' binds them when lsp-mode addresses
