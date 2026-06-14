@@ -67,6 +67,7 @@ Before using this package, you need:
 2.  **Emacs lsp-mode:** This package is an extension for `lsp-mode` (version 6.0 or higher). Therefore, `lsp-mode` must be installed and available before `lsp-ltex-plus` can function. We strongly recommend a recent build; see [Recommended `lsp-mode` Revision](#recommended-lsp-mode-revision) below.
 3.  **LTeX+ Language Server:** This is the core engine that performs the grammar checks. The recommended version is 18.7+. See [Server Installation](#server-installation) below on how to install it.
 4.  **Java:** LTeX+ requires **Java 21** or higher. Most platform-specific releases of LTeX+ include a bundled Java runtime, so you don't necessarily need to install it separately. See [Java Runtime Configuration](#3-java-runtime-configuration) for details.
+5.  **Operating system:** Linux, macOS, and Windows are fully supported. 
 
 ### Recommended `lsp-mode` Revision
 
