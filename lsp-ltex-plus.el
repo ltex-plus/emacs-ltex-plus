@@ -291,10 +291,10 @@ the field value should be ignored."
 
 (defcustom lsp-ltex-plus-latex-commands nil
   "List of LaTeX commands to be handled by the LaTeX parser.
-Listed together with empty arguments (e.g., \"\\ref{}\",
-\"\\documentclass[]{}\").  This setting is an object with the commands
-as keys and corresponding actions as values (\"default\", \"ignore\",
-\"dummy\", \"pluralDummy\", \"vowelDummy\")."
+This setting is an object with the commands as keys and corresponding
+actions as values (\"default\", \"ignore\", \"dummy\", \"pluralDummy\",
+\"vowelDummy\"). Commands are listed as symbols together with empty
+arguments (e.g., `\\ref{}', `\\documentclass[]{}')."
   :type 'alist
   :group 'lsp-ltex-plus)
 
