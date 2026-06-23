@@ -483,6 +483,21 @@ works."
   :type 'boolean
   :group 'lsp-ltex-plus)
 
+(defcustom lsp-ltex-plus-check-comint-input t
+  "When non-nil, grammar-check the active input region of comint buffers.
+In a `comint-mode' buffer (e.g. `agent-shell-mode', a shell, a REPL) only
+the editable input the user is currently typing — the region from the
+process mark to the end of the buffer — is sent to LTEX+.  Previously
+submitted input and all process/agent output are never checked.
+
+This relies on the same file-less identity machinery as
+`lsp-ltex-plus-check-fileless-buffers' (comint buffers have no backing
+file), but additionally restricts the checked document to the input
+region via `lsp-mode''s virtual-buffer support.  See
+`lsp-ltex-plus--setup-comint-buffer'."
+  :type 'boolean
+  :group 'lsp-ltex-plus)
+
 (defcustom lsp-ltex-plus-apply-kind-first-patch nil
   "Whether to apply protocol patches to `lsp-mode' (Kind-First and related).
 When non-nil, several surgical fixes are applied to `lsp-mode' to
@@ -525,6 +540,12 @@ of the buffer (or until it is saved to a real file).")
   "Monotonic counter for generating unique file-less buffer URIs.
 Combined with the Emacs PID so synthetic paths never collide within or
 across sessions; see `lsp-ltex-plus--make-fileless-uri'.")
+
+(defvar-local lsp-ltex-plus--comint-active nil
+  "Non-nil when this comint buffer's input region is being checked.
+Set by the comint activation branch of `lsp-ltex-plus-mode' and cleared
+by `lsp-ltex-plus--comint-teardown'.  Gates the submit re-sync and
+tear-down so they no-op in buffers that never opted in.")
 
 (defvar lsp-ltex-plus--dictionary-stored nil
   "Dictionary plist loaded from on-disk file.
@@ -1870,6 +1891,206 @@ started for the root."
      (t
       (lsp--warn "[lsp-ltex-plus] Could not rejoin workspace.")))))
 
+;;;; -- Comint input-region checking ------------------------------------------
+;;
+;; A comint buffer (shell, REPL, `agent-shell-mode', …) is mostly read-only
+;; process/agent output, with a single editable input region at the bottom —
+;; everything from the process mark to `point-max'.  We only want to check
+;; that input region, never the output and never previously submitted input.
+;;
+;; The lever is `lsp-mode''s virtual-buffer support, the same mechanism that
+;; presents one org-babel source block as an isolated document.  Two of its
+;; behaviours give us exactly what we need:
+;;
+;;   * `lsp--buffer-content' consults the virtual buffer's `:buffer-string'
+;;     first, so the document sent over the wire is just the input region.
+;;   * `lsp-virtual-buffer-on-change' (installed by `lsp-patch-on-change-event')
+;;     only emits a `didChange' when the edit falls inside `:in-range', so
+;;     output arriving above the input region produces no check at all.
+;;
+;; Unlike org's static source blocks, the comint input region moves on every
+;; line of output and resets on every submission.  We anchor on the process
+;; mark, which comint maintains as a live marker, so the region tracks itself;
+;; the only thing left to handle explicitly is clearing diagnostics when the
+;; user submits (`lsp-ltex-plus--comint-on-submit').
+;;
+;; The input shares its line with the prompt (e.g. "OpenCode> "), which is not
+;; editable and must not be checked, yet flycheck positions diagnostics by
+;; column from the line beginning.  So the first document line is left-padded
+;; with spaces equal to the prompt width (see
+;; `lsp-ltex-plus--comint-input-prompt-width'): the checker ignores the
+;; leading spaces, but the columns it reports then line up with the real
+;; buffer columns, prompt included.
+
+(defun lsp-ltex-plus--comint-input-start ()
+  "Return the buffer position where the active comint input region begins.
+This is the process mark — the boundary between read-only output/history
+above and the editable input the user is currently typing below.  Falls
+back to the end of the last prompt, then to `point-max', when no live
+process mark is available."
+  (let ((proc (get-buffer-process (current-buffer))))
+    (cond
+     ((and proc (marker-position (process-mark proc)))
+      (marker-position (process-mark proc)))
+     ((and (boundp 'comint-last-prompt) comint-last-prompt)
+      (cdr comint-last-prompt))
+     (t (point-max)))))
+
+(defun lsp-ltex-plus--comint-input-prompt-width ()
+  "Return the column width of the prompt preceding the active input.
+The input shares its line with the prompt (e.g. \"OpenCode> \"), so this is
+the number of characters between the true beginning of the input line and
+the input start.  `inhibit-field-text-motion' is bound so the line motion
+crosses the comint prompt field instead of stopping at its boundary.
+
+The first line of the checked document is padded with this many spaces (see
+`lsp-ltex-plus--setup-comint-buffer'), so the column coordinates the server
+reports line up with the real buffer columns even though the prompt itself
+is never sent for checking."
+  (let ((start (lsp-ltex-plus--comint-input-start))
+        (inhibit-field-text-motion t))
+    (save-excursion
+      (goto-char start)
+      (- start (line-beginning-position)))))
+
+(defun lsp-ltex-plus--setup-comint-buffer ()
+  "Give the current comint buffer a region-restricted synthetic identity.
+Like `lsp-ltex-plus--setup-fileless-buffer' this assigns a synthetic
+file:// URI and disables auto-touch (comint buffers have no backing file),
+but the `lsp--virtual-buffer' plist carries the region-mapping keys that
+the whole-buffer file-less path deliberately omits.  Those keys are all
+computed from `lsp-ltex-plus--comint-input-start' (the live process mark),
+so the mapped document is the editable input region and it tracks the
+region as output scrolls it down the buffer.
+
+Also installs `lsp-patch-on-change-event' on the buffer-local
+`lsp-after-open-hook'.  The hook runs after `lsp--text-document-did-open'
+has enabled `lsp-managed-mode' (which adds the ordinary `lsp-on-change'),
+so the swap to the range-aware change handlers survives both the
+synchronous (workspace already initialized) and the asynchronous (first
+connection) open paths.  Returns the plist."
+  (let* ((buf (current-buffer))
+         (uri (or lsp-ltex-plus--fileless-uri
+                  (setq lsp-ltex-plus--fileless-uri
+                        (lsp-ltex-plus--make-fileless-uri))))
+         ;; Same KEY reasoning as the file-less path: it must equal the
+         ;; storage key computed in `lsp--on-diagnostics' so overlays route
+         ;; back to this buffer.  The URI is never registered in
+         ;; `lsp--virtual-buffer-mappings', so `lsp--uri-to-path' round-trips
+         ;; it unchanged here and there.
+         (key (lsp--fix-path-casing (lsp--uri-to-path uri))))
+    (setq-local lsp-buffer-uri uri)
+    (setq-local
+     lsp--virtual-buffer
+     (list
+      :buffer buf
+      :buffer-uri uri
+      :buffer-file-name key
+      :major-mode major-mode
+      :workspaces nil
+      :with-current-buffer (lambda (fn) (with-current-buffer buf (funcall fn)))
+      :buffer-live? (lambda (_) (buffer-live-p buf))
+      :buffer-name (lambda (_) (buffer-name buf))
+      ;; A point is "in" the document when it is at or after the input start.
+      :in-range (lambda (&optional point)
+                  (>= (or point (point))
+                      (lsp-ltex-plus--comint-input-start)))
+      :goto-buffer (lambda () (goto-char (lsp-ltex-plus--comint-input-start)))
+      ;; The document content: the editable input region only, with the
+      ;; first line left-padded by the prompt width so column coordinates
+      ;; align with the real buffer (the prompt shares the input's line but
+      ;; is not itself checked — the pad is plain spaces the checker ignores).
+      :buffer-string (lambda ()
+                       (concat
+                        (make-string (lsp-ltex-plus--comint-input-prompt-width)
+                                     ?\s)
+                        (buffer-substring-no-properties
+                         (lsp-ltex-plus--comint-input-start)
+                         (point-max))))
+      :last-point (lambda () (point-max))
+      ;; Real point -> document position (line/character within the region).
+      ;; The character offset is measured from the true line beginning so on
+      ;; the first line it includes the prompt width, matching the padded
+      ;; document `:buffer-string' produces.
+      :cur-position
+      (lambda ()
+        (let ((inhibit-field-text-motion t))
+          (lsp-save-restriction-and-excursion
+            (let ((start (lsp-ltex-plus--comint-input-start)))
+              (list :line (max 0 (- (lsp--cur-line) (lsp--cur-line start)))
+                    :character (max 0 (- (point) (line-beginning-position))))))))
+      ;; Document position -> real point.  Anchored on the true beginning of
+      ;; the input line (crossing the prompt field) rather than the input
+      ;; start, since the document's first-line columns include the prompt pad.
+      :line/character->point
+      (lambda (line character)
+        (let ((inhibit-field-text-motion t))
+          (lsp-save-restriction-and-excursion
+            (goto-char (lsp-ltex-plus--comint-input-start))
+            (beginning-of-line)
+            (forward-line line)
+            (let ((line-end (line-end-position)))
+              (if (> character (- line-end (point)))
+                  line-end
+                (forward-char character)
+                (point))))))
+      :real->virtual-line (lambda (line)
+                            (+ line
+                               (line-number-at-pos
+                                (lsp-ltex-plus--comint-input-start))
+                               -1))
+      ;; Identity: the prompt offset lives in the padded document content
+      ;; (see `:buffer-string'), so columns need no further adjustment here.
+      :real->virtual-char (lambda (char) char)))
+    (setq-local lsp-auto-touch-files nil)
+    (setq-local lsp-auto-guess-root t)
+    (setq-local lsp-enable-file-watchers nil)
+    (add-hook 'lsp-after-open-hook #'lsp-patch-on-change-event nil t)
+    lsp--virtual-buffer))
+
+(defun lsp-ltex-plus--comint-resync ()
+  "Re-send the current comint input region to LTEX+.
+After a submission the editable region empties and the process mark jumps
+below the freshly inserted output; because that change is out of range no
+`didChange' fires on its own, so previously published diagnostics would
+linger on the submitted (now read-only) text.  Pushing a full-document
+change carrying the current — empty — input region makes the server
+republish diagnostics for the synthetic URI and clears those overlays."
+  (when (and lsp-ltex-plus--comint-active lsp--virtual-buffer)
+    (with-demoted-errors "[lsp-ltex-plus] comint resync error: %S"
+      (lsp-with-current-buffer lsp--virtual-buffer
+        ;; Under full document sync `lsp-on-change' ignores the position
+        ;; arguments and sends `(lsp--buffer-content)' = the input region.
+        (let ((p (point)))
+          (lsp-on-change p p 0))))))
+
+(defun lsp-ltex-plus--comint-on-submit (_input)
+  "Re-sync after the user submits input in a comint buffer.
+Added to `comint-input-filter-functions'.  Deferred to a zero-delay timer
+so comint has finished moving the process mark and inserting the echoed
+input before we recompute the (now empty) input region."
+  (when lsp-ltex-plus--comint-active
+    (let ((buf (current-buffer)))
+      (run-with-timer 0 nil
+                      (lambda ()
+                        (when (buffer-live-p buf)
+                          (with-current-buffer buf
+                            (lsp-ltex-plus--comint-resync))))))))
+
+(defun lsp-ltex-plus--comint-teardown ()
+  "Detach comint input-region checking from the current buffer.
+Idempotent.  Removes the submit hook and drops this buffer's virtual
+buffer from `lsp--virtual-buffer-connections'.  Server tear-down and
+diagnostic clean-up are handled by the shared deactivation path in
+`lsp-ltex-plus-mode' (or, on buffer kill, by `lsp-managed-mode')."
+  (when lsp-ltex-plus--comint-active
+    (setq lsp-ltex-plus--comint-active nil)
+    (remove-hook 'comint-input-filter-functions
+                 #'lsp-ltex-plus--comint-on-submit t)
+    (when (bound-and-true-p lsp--virtual-buffer)
+      (setq lsp--virtual-buffer-connections
+            (delq lsp--virtual-buffer lsp--virtual-buffer-connections)))))
+
 ;;;###autoload
 (define-minor-mode lsp-ltex-plus-mode
   "Minor mode for LTEX+ grammar checking via `lsp-mode'.
@@ -1887,7 +2108,12 @@ silently."
   (if lsp-ltex-plus-mode
       (let* ((entry (assq major-mode lsp-ltex-plus-major-modes))
              (programming-p (and entry (nth 2 entry)))
+             (comint-p (and (not (buffer-file-name))
+                            (derived-mode-p 'comint-mode)
+                            (get-buffer-process (current-buffer))
+                            lsp-ltex-plus-check-comint-input))
              (fileless-p (and (not (buffer-file-name))
+                              (not comint-p)
                               lsp-ltex-plus-check-fileless-buffers)))
         (if (and programming-p
                  (not lsp-ltex-plus-check-programming-languages)
@@ -1935,7 +2161,7 @@ silently."
             (cond
              ;; lsp-mode not yet loaded — defensive, deferred startup.
              ((not (fboundp 'lsp))
-              (if (not fileless-p)
+              (if (not (or fileless-p comint-p))
                   ;; If dealing with a real file, we invoke lsp-deferred
                   ;; that defers server startup until the buffer is visible
                   (progn
@@ -1948,6 +2174,37 @@ silently."
                 ;; `buffer-file-name'.  So, we just log and bail.
                 (lsp-ltex-plus--log
                  "lsp-mode not loaded; cannot start file-less buffer yet")))
+             ;; A comint buffer attaches like a file-less buffer (shared
+             ;; scratch workspace, synthetic URI), but its virtual buffer
+             ;; restricts the checked document to the active input region.
+             ;; Handled before `fileless-p' (a comint buffer is also
+             ;; file-less) and before the `lsp-mode'-active clause.
+             (comint-p
+              (lsp-ltex-plus--log "Activation path: comint input-region startup")
+              (lsp-ltex-plus--setup-comint-buffer)
+              ;; Same `buffer-file-name' binding rationale as the file-less
+              ;; branch: `lsp--start-workspace' calls `file-remote-p' on it.
+              (let ((buffer-file-name (lsp--uri-to-path lsp-ltex-plus--fileless-uri)))
+                (lsp-ltex-plus--rejoin-workspace
+                 (lsp-f-canonical temporary-file-directory)))
+              (when lsp--buffer-workspaces
+                (setq-local lsp--virtual-buffer
+                            (plist-put lsp--virtual-buffer
+                                       :workspaces lsp--buffer-workspaces))
+                ;; Register the region as a virtual-buffer connection so
+                ;; `lsp-virtual-buffer-on-change' can find it by `:in-range'
+                ;; and route input-region edits (and only those) to didChange.
+                (cl-pushnew lsp--virtual-buffer lsp--virtual-buffer-connections)
+                (lsp-mode 1)
+                ;; Cover the already-initialized-workspace reuse path, where
+                ;; didOpen (and thus the `lsp-after-open-hook' patch) already
+                ;; ran synchronously during rejoin; harmless if it runs again.
+                (lsp-patch-on-change-event)
+                (setq lsp-ltex-plus--comint-active t)
+                (add-hook 'comint-input-filter-functions
+                          #'lsp-ltex-plus--comint-on-submit nil t)
+                (add-hook 'kill-buffer-hook
+                          #'lsp-ltex-plus--comint-teardown nil t)))
              ;; A file-less buffer gets a synthetic identity and attaches to
              ;; the shared scratch workspace.  Handled before the
              ;; `lsp-mode'-active clause so a file-less buffer always takes
@@ -1999,7 +2256,11 @@ silently."
              (t
               (lsp-ltex-plus--log "Activation path: (lsp) (first startup)")
               (lsp))))))
-    ;; Deactivation.  Two paths depending on co-tenant state:
+    ;; Deactivation.  First detach comint input-region wiring (submit hook,
+    ;; virtual-buffer connection) if this buffer opted into it; the shared
+    ;; server tear-down below still runs.
+    (lsp-ltex-plus--comint-teardown)
+    ;; Two paths depending on co-tenant state:
     ;;   • Sole client — `lsp-disconnect' cleanly tears down lsp-managed-mode,
     ;;     clears diagnostics, and stops the server.
     ;;   • Co-tenants (e.g., basedpyright, texlab) — `lsp-disconnect' would
