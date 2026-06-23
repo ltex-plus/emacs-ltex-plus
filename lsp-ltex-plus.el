@@ -1804,6 +1804,9 @@ attached."
     ;; Standalone-buffer ergonomics, mirroring what file buffers get.
     (setq-local lsp-auto-guess-root t)
     (setq-local lsp-enable-file-watchers nil)
+    ;; Synthetic URIs visit no buffer, so code-action edits (e.g. accept
+    ;; suggestion) can't be routed back here by `lsp-mode' without help.
+    (lsp-ltex-plus--install-synthetic-edit-routing)
     lsp--virtual-buffer))
 
 (defun lsp-ltex-plus--fileless-on-save ()
@@ -2046,7 +2049,78 @@ connection) open paths.  Returns the plist."
     (setq-local lsp-auto-guess-root t)
     (setq-local lsp-enable-file-watchers nil)
     (add-hook 'lsp-after-open-hook #'lsp-patch-on-change-event nil t)
+    (lsp-ltex-plus--install-synthetic-edit-routing)
     lsp--virtual-buffer))
+
+(defun lsp-ltex-plus--synthetic-buffer-for-uri (uri)
+  "Return the synthetic ltex-plus virtual buffer whose document URI is URI.
+\"Synthetic\" means a file-less or comint buffer set up by this package
+(`lsp-ltex-plus--fileless-uri' non-nil): its URI maps to no visiting
+buffer, so `lsp-mode''s URI->buffer resolution cannot find it.  Returns the
+`lsp--virtual-buffer' plist (ready for `lsp-with-current-buffer'), or nil."
+  (and uri
+       (seq-some
+        (lambda (buf)
+          (with-current-buffer buf
+            (and lsp-ltex-plus--fileless-uri
+                 lsp--virtual-buffer
+                 (equal lsp-buffer-uri uri)
+                 lsp--virtual-buffer)))
+        (buffer-list))))
+
+(defun lsp-ltex-plus--workspace-edit-target-uri (workspace-edit)
+  "Return the document URI targeted by WORKSPACE-EDIT, or nil.
+Handles both the `documentChanges' shape (used by LTEX+) and the simpler
+`changes' map."
+  (-let (((&WorkspaceEdit :document-changes? :changes?) workspace-edit))
+    (cond
+     ((and document-changes? (> (length document-changes?) 0))
+      (-some-> (elt document-changes? 0)
+        (lsp:text-document-edit-text-document)
+        (lsp:versioned-text-document-identifier-uri)))
+     (changes? (car (hash-table-keys changes?))))))
+
+(defun lsp-ltex-plus--apply-workspace-edit-advice (orig workspace-edit &optional operation)
+  "Route a WorkspaceEdit aimed at a synthetic ltex-plus buffer to that buffer.
+`lsp-mode' resolves a WorkspaceEdit's target buffer from the document URI
+with `find-file-noselect'/`find-buffer-visiting'.  Our file-less and comint
+buffers carry a synthetic file:// URI that visits no buffer, so the lookup
+either fails or spawns a phantom temp-file buffer and the edit — e.g. an
+LTEX+ \"accept suggestion\" spelling fix — never reaches the real buffer.
+
+When the edit targets one of our synthetic buffers, apply its text edits
+directly there with `lsp--virtual-buffer' bound, so ranges map through the
+buffer's own `:line/character->point' (which is also why this bypasses the
+version check in the original: there is no on-disk version to compare).
+Otherwise fall through to ORIG unchanged — ordinary file-backed edits are
+never affected.
+
+Installed as `:around' advice on `lsp--apply-workspace-edit' the first time
+a synthetic buffer is set up.  It is a strict pass-through for every edit
+that does not match one of our buffers."
+  (if-let* ((uri (lsp-ltex-plus--workspace-edit-target-uri workspace-edit))
+            (vb (lsp-ltex-plus--synthetic-buffer-for-uri uri)))
+      (lsp-with-current-buffer vb
+        (-let (((&WorkspaceEdit :document-changes? :changes?) workspace-edit))
+          (cond
+           (document-changes?
+            ;; A TextDocumentEdit has no `kind'; resource operations
+            ;; (create/rename/delete) do — skip those, LTEX+ never sends them.
+            (seq-doseq (tde document-changes?)
+              (unless (lsp:edit-kind tde)
+                (lsp--apply-text-edits (lsp:text-document-edit-edits tde)
+                                       operation))))
+           (changes?
+            (lsp-map (lambda (_uri edits)
+                       (lsp--apply-text-edits edits operation))
+                     changes?)))))
+    (funcall orig workspace-edit operation)))
+
+(defun lsp-ltex-plus--install-synthetic-edit-routing ()
+  "Ensure synthetic-buffer WorkspaceEdit routing is active.
+Idempotent: `advice-add' is a no-op when the advice is already present."
+  (advice-add 'lsp--apply-workspace-edit :around
+              #'lsp-ltex-plus--apply-workspace-edit-advice))
 
 (defun lsp-ltex-plus--comint-resync ()
   "Re-send the current comint input region to LTEX+.
