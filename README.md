@@ -42,6 +42,7 @@ LTeX+ can operate in two distinct ways, depending on your needs:
 - **Bi-directional Support:** Handles advanced server requests (like dynamic configuration fetching) safely.
 - **Highly Configurable:** Easily switch languages, enable "picky" grammar rules, or connect to a premium LanguageTool account.
 - **Wide Language Support:** Pre-configured for Markdown, LaTeX, Org, RestructuredText, HTML, BibTeX, and many others.
+- **Checks More Than Files:** Grammar-checks buffers with no file on disk (`*scratch*`, capture buffers) and the active input region of comint shells, REPLs, and AI agent shells — handy for composing prose into a prompt or command.
 - **Programming Language Support:** Optionally checks grammar and spelling in comments of 30+ programming languages (Python, C, C++, Rust, Java, …), running transparently alongside the primary language server thanks to its add-on design. Disabled by default (matching LTeX+), opt-in via `lsp-ltex-plus-check-programming-languages`.
 - **Lightweight & Lazy-loading:** Split into a tiny bootstrap file loaded at Emacs startup and a full client loaded on first use of a supported buffer, so startup time is essentially unaffected.
 - **Intuitive API:** A deliberately small surface area — one entry point (`lsp-ltex-plus-enable-for-modes`) plus customisation variables under a consistent `lsp-ltex-plus-` prefix, so configuration is discoverable through `customize-group` or tab-completion.
@@ -330,6 +331,24 @@ A few details worth knowing:
 - **Activation rules are the same as for files.** The buffer's major mode must be in the enabled set, and the programming-language gate still applies. Because `*scratch*` uses `lisp-interaction-mode` (a programming mode), it is auto-checked only when `lsp-ltex-plus-check-programming-languages` is *also* enabled — but an explicit `M-x lsp-ltex-plus-mode` in `*scratch*` always works regardless.
 - **Saving to a file is seamless.** If you later save a checked file-less buffer to a real path (e.g. `C-x C-w`), it is transparently re-checked as a normal file.
 
+### Checking comint input (shells, REPLs, agent shells)
+
+A `comint-mode` buffer — an inferior shell, a language REPL, or an AI agent shell such as [`agent-shell`](https://github.com/xenodium/agent-shell) — is mostly read-only output, with a single editable input region at the bottom where you type. `lsp-ltex-plus-check-comint-input` (enabled by default) grammar-checks **only that active input region**: never the command/agent output above it, and never input you have already submitted. Set it to `nil` to leave comint buffers unchecked:
+
+```elisp
+;; Opt out: don't check comint input regions.
+(setq lsp-ltex-plus-check-comint-input nil)
+```
+
+This is useful when you compose prose into a shell — a prompt to an AI agent, a commit message piped to a command, a long query — and want the same spelling and grammar feedback you get in a document.
+
+A few details worth knowing:
+
+- **The major mode must be in the enabled set.** comint-derived modes are not enabled out of the box, so add the one you use — for example `(lsp-ltex-plus-enable-for-modes :extend-to '((agent-shell-mode "plaintext" nil)))` — or run `M-x lsp-ltex-plus-mode` in the buffer. The programming-language gate still applies to dispatcher-driven activation, but an explicit `M-x lsp-ltex-plus-mode` always works.
+- **The prompt is accounted for.** The input usually shares its line with a prompt (e.g. `OpenCode> `) that is not part of what you typed; diagnostics and corrections are positioned correctly past it.
+- **Multi-line input works.** Errors are flagged and corrections apply across every line of a multi-line entry.
+- **Submitting clears the slate.** Once you send the input, its diagnostics are cleared and checking follows the fresh prompt.
+
 
 ## Customization
 
@@ -361,6 +380,7 @@ An empty space means the parameter has no direct counterpart at that layer: typi
 | `lsp-ltex-plus-major-modes` | S† | List of `(major-mode language-id programming-p)` triples driving client activation. *Type:* list; *default:* ~80 entries covering markup and programming modes (defined in `lsp-ltex-plus-bootstrap.el`). | | |
 | `lsp-ltex-plus-check-programming-languages` | L† | When non-nil, enable grammar checking in comments of programming languages (disabled by default, matching LTeX+). *Type:* boolean; *default:* `nil`. | | |
 | `lsp-ltex-plus-check-fileless-buffers` | S† | When non-nil, also check buffers with no backing file (e.g. `*scratch*`, capture buffers); all such buffers share one `ltex-ls-plus` process. See [Checking file-less buffers](#checking-file-less-buffers). *Type:* boolean; *default:* `t`. | | |
+| `lsp-ltex-plus-check-comint-input` | S† | When non-nil, check the active input region of `comint-mode` buffers (shells, REPLs, agent shells) — only what you are currently typing, never the output or earlier input. See [Checking comint input](#checking-comint-input-shells-repls-agent-shells). *Type:* boolean; *default:* `t`. | | |
 | `lsp-ltex-plus-language` | L | The language LanguageTool should check against (e.g. `"en-US"`, `"de-DE"`). Valid codes are listed on the [LTeX+ supported-languages page](https://ltex-plus.github.io/ltex-plus/supported-languages.html); `"auto"` attempts language detection (not recommended — no spelling). *Type:* string; *default:* `"en-US"`. | X | X |
 | `lsp-ltex-plus-dictionary` | L | Additional words accepted as correctly spelled (language-specific). *Type:* plist; *default:* `nil`. See [External settings](#external-settings) for format and behaviour. | X | |
 | `lsp-ltex-plus-enabled-rules` | L | Language-specific list of rules to enable. *Type:* plist; *default:* `nil`. See [External settings](#external-settings). | X | X |
@@ -405,6 +425,8 @@ An empty space means the parameter has no direct counterpart at that layer: typi
 > **†** on `lsp-ltex-plus-check-programming-languages` — re-read at every buffer (re-)activation rather than on every check. Already-active buffers are unaffected by a mid-session flip; newly opened or toggled buffers see the new value.
 >
 > **†** on `lsp-ltex-plus-check-fileless-buffers` — gates the dispatcher and the mode body at activation time, not on every check. Already-active buffers are unaffected by a mid-session flip; newly opened or toggled file-less buffers see the new value.
+>
+> **†** on `lsp-ltex-plus-check-comint-input` — gates the mode body at activation time, not on every check. Already-active comint buffers are unaffected by a mid-session flip; newly opened or toggled ones see the new value.
 
 </details>
 
