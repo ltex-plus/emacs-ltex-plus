@@ -285,7 +285,8 @@ https://ltex-plus.github.io/ltex-plus/advanced-usage.html#hiding-false-positives
   "List of BibTeX fields whose values are to be checked in BibTeX files.
 This setting is an object with the field names as keys and Booleans as values,
 where true means that the field value should be checked and false means that
-the field value should be ignored."
+the field value should be ignored.  Field names are listed as symbols
+(e.g., `title')."
   :type 'alist
   :group 'lsp-ltex-plus)
 
@@ -293,15 +294,17 @@ the field value should be ignored."
   "List of LaTeX commands to be handled by the LaTeX parser.
 This setting is an object with the commands as keys and corresponding
 actions as values (\"default\", \"ignore\", \"dummy\", \"pluralDummy\",
-\"vowelDummy\"). Commands are listed as symbols together with empty
-arguments (e.g., `\\ref{}', `\\documentclass[]{}')."
+\"vowelDummy\"). Commands are listed as symbols (not strings) with empty
+arguments and the initial backslash doubled, e.g. `\\\\ref{}',
+`\\\\documentclass[]{}'."
   :type 'alist
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-latex-environments nil
   "List of names of LaTeX environments to be handled by the LaTeX parser.
 This setting is an object with the environment names as keys and corresponding
-actions as values (\"default\", \"ignore\")."
+actions as values (\"default\", \"ignore\").  Environment names are listed as
+symbols (e.g., `lstlisting')."
   :type 'alist
   :group 'lsp-ltex-plus)
 
@@ -309,7 +312,7 @@ actions as values (\"default\", \"ignore\")."
   "List of Markdown node types to be handled by the Markdown parser.
 This setting is an object with the node types as keys and corresponding
 actions as values (\"default\", \"ignore\", \"dummy\", \"pluralDummy\",
-\"vowelDummy\")."
+\"vowelDummy\").  Node types are listed as symbols (e.g., `CodeBlock')."
   :type 'alist
   :group 'lsp-ltex-plus)
 
