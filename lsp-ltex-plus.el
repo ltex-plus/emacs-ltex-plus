@@ -669,24 +669,6 @@ FMT is the format string, and ARGS are the arguments for it."
   `(when lsp-ltex-plus-debug
      (lsp-ltex-plus--log-to-buffer (format ,fmt ,@args))))
 
-(defun lsp-ltex-plus--enabled-languages ()
-  "Return the unique language IDs from `lsp-ltex-plus-major-modes'.
-All supported IDs are always returned.  Filtering happens client-side,
-via the dispatcher (`lsp-ltex-plus--maybe-activate') and the
-`lsp-ltex-plus-mode' guard: the server only ever sees documents for
-buffers in which the minor mode is active, so `ltex.enabled' can safely
-cover every registered language without triggering unwanted checks.
-
-This design differs from the VS Code LTeX+ extension, which (to the best
-of our knowledge) registers a static document selector covering every
-supported language and relies on `ltex.enabled' as a server-side runtime
-filter: the client always fires `textDocument/didChange' and the server
-drops notifications whose language ID is not enabled.  In the Emacs
-client the filter lives in the dispatcher instead, so the server only
-ever sees documents the user intended to check, and `ltex.enabled' is
-effectively a no-op by construction."
-  (seq-uniq (mapcar #'cadr lsp-ltex-plus-major-modes) #'string=))
-
 ;;;; -- Dictionary Management --------------------------------------------------
 
 (defvar lsp-ltex-plus-dictionary-file
@@ -1323,26 +1305,6 @@ probe's marker symbol but regresses or relocates the PR #5059 fix."
                  (null (plist-get caps :completionProvider)))
         (plist-put caps :completionProvider '(:resolveProvider nil))))))
 
-(defun lsp-ltex-plus--capture-server-info (workspace)
-  "Store WORKSPACE's reported server name and version, if available.
-Reads the `serverInfo' the server returned in its `initialize' response
-via the `lsp-workspace-server-name' / `-server-version' accessors and
-records them in `lsp-ltex-plus--server-name' and
-`lsp-ltex-plus--server-version'.
-
-Those accessors only exist on an `lsp-mode' that carries the
-`serverInfo' plumbing, so the call is guarded with `fboundp': on an
-older `lsp-mode' this is a no-op and both variables stay nil.  A server
-that omits `serverInfo' (or its version) also leaves the corresponding
-variable nil."
-  (when (and (fboundp 'lsp-workspace-server-name)
-             (fboundp 'lsp-workspace-server-version))
-    (setq lsp-ltex-plus--server-name (lsp-workspace-server-name workspace)
-          lsp-ltex-plus--server-version (lsp-workspace-server-version workspace))
-    (lsp-ltex-plus--log "Connected server: %s %s"
-                        (or lsp-ltex-plus--server-name "<unknown>")
-                        (or lsp-ltex-plus--server-version "<no version>"))))
-
 (defun lsp-ltex-plus--suppress-progress (orig-fn workspace params)
   "Swallow ltex-ls-plus progress notifications.
 Notifications are silenced when `lsp-ltex-plus-show-progress' is nil.
@@ -1497,6 +1459,44 @@ measurements."
       (remhash workspace lsp-ltex-plus--pending-measurements))))
 
 ;;;; -- Lsp-mode Registration --------------------------------------------------
+
+(defun lsp-ltex-plus--enabled-languages ()
+  "Return the unique language IDs from `lsp-ltex-plus-major-modes'.
+All supported IDs are always returned.  Filtering happens client-side,
+via the dispatcher (`lsp-ltex-plus--maybe-activate') and the
+`lsp-ltex-plus-mode' guard: the server only ever sees documents for
+buffers in which the minor mode is active, so `ltex.enabled' can safely
+cover every registered language without triggering unwanted checks.
+
+This design differs from the VS Code LTeX+ extension, which (to the best
+of our knowledge) registers a static document selector covering every
+supported language and relies on `ltex.enabled' as a server-side runtime
+filter: the client always fires `textDocument/didChange' and the server
+drops notifications whose language ID is not enabled.  In the Emacs
+client the filter lives in the dispatcher instead, so the server only
+ever sees documents the user intended to check, and `ltex.enabled' is
+effectively a no-op by construction."
+  (seq-uniq (mapcar #'cadr lsp-ltex-plus-major-modes) #'string=))
+
+(defun lsp-ltex-plus--capture-server-info (workspace)
+  "Store WORKSPACE's reported server name and version, if available.
+Reads the `serverInfo' the server returned in its `initialize' response
+via the `lsp-workspace-server-name' / `-server-version' accessors and
+records them in `lsp-ltex-plus--server-name' and
+`lsp-ltex-plus--server-version'.
+
+Those accessors only exist on an `lsp-mode' that carries the
+`serverInfo' plumbing, so the call is guarded with `fboundp': on an
+older `lsp-mode' this is a no-op and both variables stay nil.  A server
+that omits `serverInfo' (or its version) also leaves the corresponding
+variable nil."
+  (when (and (fboundp 'lsp-workspace-server-name)
+             (fboundp 'lsp-workspace-server-version))
+    (setq lsp-ltex-plus--server-name (lsp-workspace-server-name workspace)
+          lsp-ltex-plus--server-version (lsp-workspace-server-version workspace))
+    (lsp-ltex-plus--log "Connected server: %s %s"
+                        (or lsp-ltex-plus--server-name "<unknown>")
+                        (or lsp-ltex-plus--server-version "<no version>"))))
 
 (defun lsp-ltex-plus--setup ()
   "Initialize and register the ltex-ls-plus client with `lsp-mode'."
