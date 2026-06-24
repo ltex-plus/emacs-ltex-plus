@@ -1732,7 +1732,7 @@ measurements."
              #'lsp-ltex-plus--request-workspace-specific-configuration))))
   (lsp-ltex-plus--log "lsp-ltex-plus--setup completed."))
 
-;;;; -- Activation -------------------------------------------------------------
+;;;; -- File-less buffer support -----------------------------------------------
 
 (defun lsp-ltex-plus--make-fileless-uri ()
   "Return a fresh, unique synthetic file:// URI for a file-less buffer.
@@ -1854,47 +1854,7 @@ synthetic document."
     (remove-hook 'after-set-visited-file-name-hook
                  #'lsp-ltex-plus--fileless-on-save t)))
 
-(defun lsp-ltex-plus--rejoin-workspace (&optional explicit-root)
-  "Attach the current buffer to the ltex-ls-plus workspace only.
-Used when `lsp-ltex-plus-mode' activates in a buffer where `lsp-mode'
-is already running for another client (e.g. pyright, texlab).  A plain
-`(lsp)' would re-send `textDocument/didOpen' to every matching client,
-producing a \"redundant open text document\" warning from co-tenants.
-
-With EXPLICIT-ROOT non-nil, use it as the project root instead of
-deriving one from the variable `buffer-file-name'.  This is how
-file-less buffers attach: they all pass the variable
-`temporary-file-directory' as the shared root, so one server process
-serves them while their distinct synthetic URIs keep them as separate
-documents.
-
-If an ltex-ls-plus workspace already exists for the project root, the
-buffer is opened in it.  Otherwise, a new ltex-ls-plus connection is
-started for the root."
-  (let* ((session (lsp-session))
-         (client (gethash 'ltex-ls-plus lsp-clients))
-         (project-root (or explicit-root
-                           (when-let* ((buf-file (buffer-file-name))
-                                       (root (lsp--calculate-root session buf-file)))
-                             (lsp-f-canonical root))))
-         (workspace (and client project-root
-                         (seq-find
-                          (lambda (ws)
-                            (eq 'ltex-ls-plus (lsp--workspace-server-id ws)))
-                          (gethash project-root
-                                   (lsp-session-folder->servers session))))))
-    (cond
-     (workspace
-      (lsp--open-in-workspace workspace)
-      (cl-pushnew workspace lsp--buffer-workspaces))
-     ((and client project-root)
-      (let ((new-ws (lsp--start-connection session client project-root)))
-        (when new-ws
-          (cl-pushnew new-ws lsp--buffer-workspaces))))
-     (t
-      (lsp--warn "[lsp-ltex-plus] Could not rejoin workspace.")))))
-
-;;;; -- Comint input-region checking ------------------------------------------
+;;;; -- Comint input-region support --------------------------------------------
 ;;
 ;; A comint buffer (shell, REPL, `agent-shell-mode', …) is mostly read-only
 ;; process/agent output, with a single editable input region at the bottom —
@@ -2077,6 +2037,55 @@ connection) open paths.  Returns the plist."
     (lsp-ltex-plus--install-synthetic-edit-routing)
     lsp--virtual-buffer))
 
+(defun lsp-ltex-plus--comint-resync ()
+  "Re-send the current comint input region to LTEX+.
+After a submission the editable region empties and the process mark jumps
+below the freshly inserted output; because that change is out of range no
+`didChange' fires on its own, so previously published diagnostics would
+linger on the submitted (now read-only) text.  Pushing a full-document
+change carrying the current — empty — input region makes the server
+republish diagnostics for the synthetic URI and clears those overlays."
+  (when (and lsp-ltex-plus--comint-active lsp--virtual-buffer)
+    (with-demoted-errors "[lsp-ltex-plus] comint resync error: %S"
+      (lsp-with-current-buffer lsp--virtual-buffer
+        ;; Under full document sync `lsp-on-change' ignores the position
+        ;; arguments and sends `(lsp--buffer-content)' = the input region.
+        (let ((p (point)))
+          (lsp-on-change p p 0))))))
+
+(defun lsp-ltex-plus--comint-on-submit (_input)
+  "Re-sync after the user submits input in a comint buffer.
+Added to `comint-input-filter-functions'.  Deferred to a zero-delay timer
+so comint has finished moving the process mark and inserting the echoed
+input before we recompute the (now empty) input region."
+  (when lsp-ltex-plus--comint-active
+    (let ((buf (current-buffer)))
+      (run-with-timer 0 nil
+                      (lambda ()
+                        (when (buffer-live-p buf)
+                          (with-current-buffer buf
+                            (lsp-ltex-plus--comint-resync))))))))
+
+(defun lsp-ltex-plus--comint-teardown ()
+  "Detach comint input-region checking from the current buffer.
+Idempotent.  Removes the submit hook and drops this buffer's virtual
+buffer from `lsp--virtual-buffer-connections'.  Server tear-down and
+diagnostic clean-up are handled by the shared deactivation path in
+`lsp-ltex-plus-mode' (or, on buffer kill, by `lsp-managed-mode')."
+  (when lsp-ltex-plus--comint-active
+    (setq lsp-ltex-plus--comint-active nil)
+    (remove-hook 'comint-input-filter-functions
+                 #'lsp-ltex-plus--comint-on-submit t)
+    (when (bound-and-true-p lsp--virtual-buffer)
+      (setq lsp--virtual-buffer-connections
+            (delq lsp--virtual-buffer lsp--virtual-buffer-connections)))))
+
+;;;; -- Synthetic-buffer edit routing ------------------------------------------
+;; Shared by the file-less and comint paths above: both attach a buffer under
+;; a synthetic file:// URI that visits no real buffer, so `lsp-mode' cannot
+;; route a code-action `WorkspaceEdit' back to it on its own.  The advice
+;; below detects edits aimed at such a buffer and applies them there.
+
 (defun lsp-ltex-plus--synthetic-buffer-for-uri (uri)
   "Return the synthetic ltex-plus virtual buffer whose document URI is URI.
 \"Synthetic\" means a file-less or comint buffer set up by this package
@@ -2147,48 +2156,47 @@ Idempotent: `advice-add' is a no-op when the advice is already present."
   (advice-add 'lsp--apply-workspace-edit :around
               #'lsp-ltex-plus--apply-workspace-edit-advice))
 
-(defun lsp-ltex-plus--comint-resync ()
-  "Re-send the current comint input region to LTEX+.
-After a submission the editable region empties and the process mark jumps
-below the freshly inserted output; because that change is out of range no
-`didChange' fires on its own, so previously published diagnostics would
-linger on the submitted (now read-only) text.  Pushing a full-document
-change carrying the current — empty — input region makes the server
-republish diagnostics for the synthetic URI and clears those overlays."
-  (when (and lsp-ltex-plus--comint-active lsp--virtual-buffer)
-    (with-demoted-errors "[lsp-ltex-plus] comint resync error: %S"
-      (lsp-with-current-buffer lsp--virtual-buffer
-        ;; Under full document sync `lsp-on-change' ignores the position
-        ;; arguments and sends `(lsp--buffer-content)' = the input region.
-        (let ((p (point)))
-          (lsp-on-change p p 0))))))
+;;;; -- Minor mode & activation dispatch ---------------------------------------
 
-(defun lsp-ltex-plus--comint-on-submit (_input)
-  "Re-sync after the user submits input in a comint buffer.
-Added to `comint-input-filter-functions'.  Deferred to a zero-delay timer
-so comint has finished moving the process mark and inserting the echoed
-input before we recompute the (now empty) input region."
-  (when lsp-ltex-plus--comint-active
-    (let ((buf (current-buffer)))
-      (run-with-timer 0 nil
-                      (lambda ()
-                        (when (buffer-live-p buf)
-                          (with-current-buffer buf
-                            (lsp-ltex-plus--comint-resync))))))))
+(defun lsp-ltex-plus--rejoin-workspace (&optional explicit-root)
+  "Attach the current buffer to the ltex-ls-plus workspace only.
+Used when `lsp-ltex-plus-mode' activates in a buffer where `lsp-mode'
+is already running for another client (e.g. pyright, texlab).  A plain
+`(lsp)' would re-send `textDocument/didOpen' to every matching client,
+producing a \"redundant open text document\" warning from co-tenants.
 
-(defun lsp-ltex-plus--comint-teardown ()
-  "Detach comint input-region checking from the current buffer.
-Idempotent.  Removes the submit hook and drops this buffer's virtual
-buffer from `lsp--virtual-buffer-connections'.  Server tear-down and
-diagnostic clean-up are handled by the shared deactivation path in
-`lsp-ltex-plus-mode' (or, on buffer kill, by `lsp-managed-mode')."
-  (when lsp-ltex-plus--comint-active
-    (setq lsp-ltex-plus--comint-active nil)
-    (remove-hook 'comint-input-filter-functions
-                 #'lsp-ltex-plus--comint-on-submit t)
-    (when (bound-and-true-p lsp--virtual-buffer)
-      (setq lsp--virtual-buffer-connections
-            (delq lsp--virtual-buffer lsp--virtual-buffer-connections)))))
+With EXPLICIT-ROOT non-nil, use it as the project root instead of
+deriving one from the variable `buffer-file-name'.  This is how
+file-less buffers attach: they all pass the variable
+`temporary-file-directory' as the shared root, so one server process
+serves them while their distinct synthetic URIs keep them as separate
+documents.
+
+If an ltex-ls-plus workspace already exists for the project root, the
+buffer is opened in it.  Otherwise, a new ltex-ls-plus connection is
+started for the root."
+  (let* ((session (lsp-session))
+         (client (gethash 'ltex-ls-plus lsp-clients))
+         (project-root (or explicit-root
+                           (when-let* ((buf-file (buffer-file-name))
+                                       (root (lsp--calculate-root session buf-file)))
+                             (lsp-f-canonical root))))
+         (workspace (and client project-root
+                         (seq-find
+                          (lambda (ws)
+                            (eq 'ltex-ls-plus (lsp--workspace-server-id ws)))
+                          (gethash project-root
+                                   (lsp-session-folder->servers session))))))
+    (cond
+     (workspace
+      (lsp--open-in-workspace workspace)
+      (cl-pushnew workspace lsp--buffer-workspaces))
+     ((and client project-root)
+      (let ((new-ws (lsp--start-connection session client project-root)))
+        (when new-ws
+          (cl-pushnew new-ws lsp--buffer-workspaces))))
+     (t
+      (lsp--warn "[lsp-ltex-plus] Could not rejoin workspace.")))))
 
 ;;;###autoload
 (define-minor-mode lsp-ltex-plus-mode
@@ -2396,7 +2404,6 @@ silently."
               (flycheck-buffer))
             (when (bound-and-true-p flymake-mode)
               (flymake-start))))))))
-
 
 ;; Initialize the lsp client.  At default settings this registers language IDs,
 ;; loads persisted dictionaries/rules from disk, and calls
