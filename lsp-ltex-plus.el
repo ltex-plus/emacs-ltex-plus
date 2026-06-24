@@ -1956,6 +1956,21 @@ is never sent for checking."
       (goto-char start)
       (- start (line-beginning-position)))))
 
+(defun lsp-ltex-plus--comint-input-ready-p ()
+  "Return non-nil when the comint buffer is awaiting user input.
+While the program is producing output (e.g. an agent streaming a reply)
+there is no user input to check, and the input region must read as empty.
+
+This is not optional polish: shell-maker inserts streaming output at
+`point-max' while the process mark — created with insertion type nil —
+stays *behind* the inserted text (it advances the mark only afterwards).
+During the insertion our change handler therefore sees the output sitting
+inside the input region (process mark to `point-max') and would both check
+it and let its diagnostics accumulate.  Keying on `shell-maker--busy' keeps
+the region empty until the shell is idle again.  Plain comint buffers,
+where that variable is unbound, default to ready."
+  (not (bound-and-true-p shell-maker--busy)))
+
 (defun lsp-ltex-plus--setup-comint-buffer ()
   "Give the current comint buffer a region-restricted synthetic identity.
 Like `lsp-ltex-plus--setup-fileless-buffer' this assigns a synthetic
@@ -1994,22 +2009,32 @@ connection) open paths.  Returns the plist."
       :with-current-buffer (lambda (fn) (with-current-buffer buf (funcall fn)))
       :buffer-live? (lambda (_) (buffer-live-p buf))
       :buffer-name (lambda (_) (buffer-name buf))
-      ;; A point is "in" the document when it is at or after the input start.
+      ;; A point is "in" the document when the shell is idle (so the text
+      ;; really is user input, not streaming output — see
+      ;; `lsp-ltex-plus--comint-input-ready-p') and it is at or after the
+      ;; input start.
       :in-range (lambda (&optional point)
-                  (>= (or point (point))
-                      (lsp-ltex-plus--comint-input-start)))
+                  (and (lsp-ltex-plus--comint-input-ready-p)
+                       (>= (or point (point))
+                           (lsp-ltex-plus--comint-input-start))))
       :goto-buffer (lambda () (goto-char (lsp-ltex-plus--comint-input-start)))
       ;; The document content: the editable input region only, with the
       ;; first line left-padded by the prompt width so column coordinates
       ;; align with the real buffer (the prompt shares the input's line but
       ;; is not itself checked — the pad is plain spaces the checker ignores).
+      ;; While the shell is busy the region is empty: returning "" both keeps
+      ;; streaming output from being checked and, if any didChange does fire,
+      ;; clears the previously published diagnostics instead of piling onto
+      ;; them.
       :buffer-string (lambda ()
-                       (concat
-                        (make-string (lsp-ltex-plus--comint-input-prompt-width)
-                                     ?\s)
-                        (buffer-substring-no-properties
-                         (lsp-ltex-plus--comint-input-start)
-                         (point-max))))
+                       (if (lsp-ltex-plus--comint-input-ready-p)
+                           (concat
+                            (make-string
+                             (lsp-ltex-plus--comint-input-prompt-width) ?\s)
+                            (buffer-substring-no-properties
+                             (lsp-ltex-plus--comint-input-start)
+                             (point-max)))
+                         ""))
       :last-point (lambda () (point-max))
       ;; Real point -> document position (line/character within the region).
       ;; The character offset is measured from the true line beginning so on
