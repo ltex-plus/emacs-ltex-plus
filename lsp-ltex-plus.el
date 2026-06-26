@@ -1490,6 +1490,17 @@ Those accessors only exist on an `lsp-mode' that carries the
 older `lsp-mode' this is a no-op and both variables stay nil.  A server
 that omits `serverInfo' (or its version) also leaves the corresponding
 variable nil."
+  ;; UPSTREAM STATUS: the two accessors come from lsp-mode PR
+  ;; emacs-lsp/lsp-mode#5073 ("feat(lsp): expose server name and version
+  ;; from InitializeResult serverInfo"), approved but not yet merged as of
+  ;; this writing.  Unlike the #5083 workaround (see the file-less startup
+  ;; branch), this `fboundp' guard is NOT scheduled for removal once #5073
+  ;; lands: it is the intended long-term proxy.  Keeping it lets the package
+  ;; degrade gracefully on any older `lsp-mode' that lacks the accessors,
+  ;; and the function-existence check is the deliberate version-anchor
+  ;; strategy (a server-version resolver was considered and rejected as too
+  ;; fragile).  So leave this guard in place even after the minimum
+  ;; `lsp-mode' version includes #5073.
   (when (and (fboundp 'lsp-workspace-server-name)
              (fboundp 'lsp-workspace-server-version))
     (setq lsp-ltex-plus--server-name (lsp-workspace-server-name workspace)
@@ -2291,6 +2302,9 @@ silently."
               (lsp-ltex-plus--setup-comint-buffer)
               ;; Same `buffer-file-name' binding rationale as the file-less
               ;; branch: `lsp--start-workspace' calls `file-remote-p' on it.
+              ;; Removal is scheduled together with the file-less binding once
+              ;; the minimum lsp-mode version includes PR #5083 (see the fuller
+              ;; note in the `fileless-p' branch below).
               (let ((buffer-file-name (lsp--uri-to-path lsp-ltex-plus--fileless-uri)))
                 (lsp-ltex-plus--rejoin-workspace
                  (lsp-f-canonical temporary-file-directory)))
@@ -2327,6 +2341,19 @@ silently."
               ;; just for the start.  The real `didOpen' happens later and
               ;; takes its URI from `lsp-buffer-uri', not from this binding, so
               ;; the buffer stays file-less.
+              ;;
+              ;; REMOVAL SCHEDULED: lsp-mode PR emacs-lsp/lsp-mode#5083
+              ;; ("Fix: starting a language server in a buffer that is not
+              ;; visiting a file errors out") was merged upstream on
+              ;; 2026-06-16 (commit 2a6ab7cd41); it makes the offending call
+              ;; site nil-safe via `(file-remote-p (or (buffer-file-name)
+              ;; default-directory))', so this binding becomes redundant.
+              ;; Keep it until the package's minimum lsp-mode version is
+              ;; bumped to the first release that includes #5083 — lsp-mode
+              ;; cuts releases roughly once a year, so this will linger a
+              ;; while.  When that floor is raised, drop both bindings (here
+              ;; and in the `comint-p' branch above) and the matching note in
+              ;; CLAUDE.md's "File-less buffers" section.
               (let ((buffer-file-name (lsp--uri-to-path lsp-ltex-plus--fileless-uri)))
                 (lsp-ltex-plus--rejoin-workspace
                  (lsp-f-canonical temporary-file-directory)))
