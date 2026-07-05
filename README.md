@@ -166,6 +166,24 @@ For `lsp-ltex-plus` to work, Emacs must be able to find the `ltex-ls-plus` binar
  '(lsp-ltex-plus :type git :host github :repo "ltex-plus/emacs-ltex-plus"))
 ```
 
+### Using `use-package` + `:vc` (Emacs 30+)
+
+The built-in way to install straight from the Git repository — no `straight`, no manual `package-vc-install`:
+
+```elisp
+(use-package lsp-ltex-plus
+  :vc (:url "https://github.com/ltex-plus/emacs-ltex-plus" :rev :newest))
+```
+
+### Using `package-vc-install` (Emacs 29+)
+
+For Emacs 29, where `use-package` has no `:vc` keyword:
+
+```elisp
+(package-vc-install "https://github.com/ltex-plus/emacs-ltex-plus")
+(require 'lsp-ltex-plus)
+```
+
 ### Manual Installation
 
 Download `lsp-ltex-plus.el` and `lsp-ltex-plus-bootstrap.el`, place them in your load path, and require the main file:
