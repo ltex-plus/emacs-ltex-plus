@@ -1153,7 +1153,7 @@ one.  KIND is a key of `lsp-ltex-plus--setting-kinds'."
   (memq value '(globally-defined per-project-when-specified
                 either-allowing-user-choice)))
 
-(defcustom lsp-ltex-plus-save-additions-to 'per-project-when-specified
+(defcustom lsp-ltex-plus-save-additions-to 'either-allowing-user-choice
   "Where an addition goes when you accept one of LTeX+'s suggestions.
 
 This never affects what is *read*: a document is always checked against
@@ -1165,21 +1165,30 @@ newly accepted word, silenced rule or hidden false positive is written.
       project that keeps its own list.  Choose this to have a project's
       list read but only ever edited by hand.
 
-  `per-project-when-specified' (default)
+  `per-project-when-specified'
       The project's file when this project keeps one for that kind of
       entry, and your own file otherwise.  A project that configures
       only a dictionary therefore collects words while your personal
-      rule choices stay personal.
+      rule choices stay personal.  Set this once you know which you
+      want and would rather not be asked.
 
-  `either-allowing-user-choice'
+  `either-allowing-user-choice' (default)
       Decide each time.  Where a project keeps its own list, the two
       possibilities appear side by side among the suggestions, one
       saving everywhere and one saving to this project only, and you
       pick as you accept.  The entry is written to one of them, never
       to both.
 
-Set from a project's `.dir-locals.el' like any other setting when one
-project deserves a different habit."
+      This is the default because it is also how the choice announces
+      itself: a project that keeps its own lists is one you set up
+      deliberately, and seeing both destinations offered is how you
+      find out the choice exists.  If you always want the same one,
+      say so with one of the two values above -- in your init file, or
+      in a single project's `.dir-locals.el' if only that one differs.
+
+Nothing changes for a project that keeps no lists of its own: all three
+values then write to your own files, since there is nowhere else to
+write."
   :type '(choice (const :tag "Always my own files" globally-defined)
                  (const :tag "This project's files when it has them"
                         per-project-when-specified)
