@@ -108,21 +108,13 @@
 ;;     asks before a repository you cloned can set them.  Do not "complete"
 ;;     the set by adding `:safe' to them:
 ;;
-;;     `lsp-ltex-plus-additional-rules-language-model' is vouched for by the
-;;     mirror image of that rule -- absolute yes, relative no -- because it
-;;     names a directory the server *reads and parses* rather than one this
-;;     package writes.  A relative name points back into the repository you
-;;     cloned, handing attacker-chosen bytes to a parser; an absolute name
-;;     refers to a data set of your own.  See
-;;     `lsp-ltex-plus--language-model-safe-p'.
-;;
-;;     The LanguageTool credentials (`lsp-ltex-plus-lt-username',
-;;     `lsp-ltex-plus-lt-api-key') are NOT in this list, deliberately.  A
-;;     `.dir-locals.el' can only set a variable, never read one, so a
-;;     repository cannot learn your key this way; the most it can do is
-;;     substitute its own, which is visible in its own `.dir-locals.el' and
-;;     is a matter of using the tool responsibly rather than a threat.
-;;     Setting them per project is a legitimate thing to want.
+;;     The line is drawn at security threats, not at configurations a user
+;;     might find surprising -- those are the user's responsibility.  So the
+;;     LanguageTool credentials are vouched for (a `.dir-locals.el' can only
+;;     set a variable, never read one, so a repository cannot learn a key
+;;     this way; substituting its own is visible in its own file), and so is
+;;     the n-gram model directory, whose worst case is that its extra rules
+;;     do not work.
 ;;
 ;;     `lsp-ltex-plus-lt-server-uri' is the middle case: it names the host
 ;;     every document you edit is sent to, so it is vouched for by an
@@ -412,35 +404,12 @@ may need to be enabled in order to see an effect.  nil means unset."
   :safe #'string-or-null-p
   :group 'lsp-ltex-plus)
 
-(defun lsp-ltex-plus--language-model-safe-p (value)
-  "Non-nil when VALUE is safe as a directory-local n-gram model directory.
-Safe means unset, or an absolute name (`~\='-relative included).
-
-Note this is the *mirror image* of `lsp-ltex-plus--project-file-safe-p\=',
-and deliberately so: the two settings are exposed to opposite dangers.
-A project settings file is one this package **writes**, so the risk is
-escaping the project and the safe form is a relative name that cannot.
-An n-gram directory is one the server **reads and parses**, so the risk
-is being fed bytes chosen by whoever wrote the `.dir-locals.el\=' — and a
-relative name is precisely what points back into the repository you just
-cloned.  An absolute name refers to a data set of your own, outside
-anything that repository could have shipped, which is also the form
-essentially every real configuration uses."
-  (or (null value)
-      (and (stringp value)
-           (file-name-absolute-p value))))
-
 (defcustom lsp-ltex-plus-additional-rules-language-model nil
   "Optional path to a directory with rules of a language model with n-gram counts.
 Set this to the parent directory that contains subdirectories for
-languages.  nil means unset.
-
-A project may select one through its `.dir-locals.el\=' when the path is
-absolute; a relative path is left for you to confirm, since it would
-point at data inside that project.  See
-`lsp-ltex-plus--language-model-safe-p\='."
+languages.  nil means unset."
   :type '(choice (const :tag "Unset" nil) (directory :tag "Directory"))
-  :safe #'lsp-ltex-plus--language-model-safe-p
+  :safe #'string-or-null-p
   :group 'lsp-ltex-plus)
 
 (defconst lsp-ltex-plus--vouched-lt-server-uris
