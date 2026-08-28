@@ -391,50 +391,61 @@ The table below lists every parameter this Emacs client exposes. The **When appl
 
 An empty space means the parameter has no direct counterpart at that layer: typically an Emacs-only concern (e.g., UI behaviour, mode registration) or an LTeX+-only feature (e.g., user custom dictionaries for individual languages).
 
-| Parameter | When applied | Description | Official LTeX+ Setting | Counterpart in LT Java Library |
-| :--- | :---: | :--- | :---: | :---: |
-| `lsp-ltex-plus-ls-plus-executable` | R | The name or path of the ltex-ls-plus executable. *Type:* string; *default:* `"ltex-ls-plus"`. | | |
-| `lsp-ltex-plus-debug` | R | When non-nil, enable verbose logging and JSON-RPC tracing. *Type:* boolean; *default:* `nil`. | | |
-| `lsp-ltex-plus-major-modes` | S† | List of `(major-mode language-id programming-p)` triples driving client activation. *Type:* list; *default:* ~80 entries covering markup and programming modes (defined in `lsp-ltex-plus-bootstrap.el`). | | |
-| `lsp-ltex-plus-check-programming-languages` | L† | When non-nil, enable grammar checking in comments of programming languages (disabled by default, matching LTeX+). *Type:* boolean; *default:* `nil`. | | |
-| `lsp-ltex-plus-check-fileless-buffers` | S† | When non-nil, also check buffers with no backing file (e.g. `*scratch*`, capture buffers); all such buffers share one `ltex-ls-plus` process. See [Checking file-less buffers](#checking-file-less-buffers). *Type:* boolean; *default:* `t`. | | |
-| `lsp-ltex-plus-check-comint-input` | S† | When non-nil, check the active input region of `comint-mode` buffers (shells, REPLs, agent shells) — only what you are currently typing, never the output or earlier input. See [Checking comint input](#checking-comint-input-shells-repls-agent-shells). *Type:* boolean; *default:* `t`. | | |
-| `lsp-ltex-plus-language` | L | The language LanguageTool should check against (e.g. `"en-US"`, `"de-DE"`). Valid codes are listed on the [LTeX+ supported-languages page](https://ltex-plus.github.io/ltex-plus/supported-languages.html); `"auto"` attempts language detection (not recommended — no spelling). *Type:* string; *default:* `"en-US"`. | X | X |
-| `lsp-ltex-plus-dictionary` | L | Additional words accepted as correctly spelled (language-specific). *Type:* plist; *default:* `nil`. See [External settings](#external-settings) for format and behaviour. | X | |
-| `lsp-ltex-plus-enabled-rules` | L | Language-specific list of rules to enable. *Type:* plist; *default:* `nil`. See [External settings](#external-settings). | X | X |
-| `lsp-ltex-plus-disabled-rules` | L | Language-specific list of rules to disable. *Type:* plist; *default:* `nil`. See [External settings](#external-settings). | X | X |
-| `lsp-ltex-plus-hidden-false-positives` | L | Regex-based suppression of false-positive diagnostics (language-specific). *Type:* plist; *default:* `nil`. See [External settings](#external-settings). | X | |
-| `lsp-ltex-plus-bibtex-fields` | L | BibTeX fields whose values are to be checked. *Type:* alist of `(field-name . boolean)`, where field-name is a symbol; *default:* `nil`. | X | |
-| `lsp-ltex-plus-latex-commands` | L | LaTeX commands to be handled by the LaTeX parser, listed with empty arguments. *Type:* alist of `(command . action)`, where command is a symbol (not a string) with the initial backslash doubled, e.g. `\\ref{}`, `\\documentclass[]{}`; action is `"default"`, `"ignore"`, `"dummy"`, `"pluralDummy"`, or `"vowelDummy"`; *default:* `nil`. | X | |
-| `lsp-ltex-plus-latex-environments` | L | LaTeX environments to be handled by the LaTeX parser. *Type:* alist of `(env-name . action)`, where env-name is a symbol and action is `"default"` or `"ignore"`; *default:* `nil`. | X | |
-| `lsp-ltex-plus-markdown-nodes` | L | Markdown node types to be handled by the Markdown parser. *Type:* alist of `(node-type . action)`, where node-type is a symbol and action is `"default"`, `"ignore"`, `"dummy"`, `"pluralDummy"`, or `"vowelDummy"`; *default:* `nil`. | X | |
-| `lsp-ltex-plus-additional-rules-enable-picky-rules` | L | Enable LanguageTool rules marked as picky (e.g. passive voice, sentence length) at the cost of more false positives. *Type:* boolean; *default:* `nil`. | X | X |
-| `lsp-ltex-plus-additional-rules-mother-tongue` | L | Optional mother tongue of the user (e.g. `"de-DE"`). When set, enables false-friend detection (picky rules may additionally need to be enabled). *Type:* `nil` or string; *default:* `nil` (disabled). | X | X |
-| `lsp-ltex-plus-additional-rules-language-model` | L | Optional path to a directory with n-gram language models (parent directory containing per-language subfolders). *Type:* `nil` or string; *default:* `nil` (disabled). | X | X |
-| `lsp-ltex-plus-lt-server-uri` | L | Base URI for the LanguageTool HTTP server. Must be a bare host — the server appends `/v2/check`. *Type:* `nil` for local built-in (default) or a string URI such as `"https://api.languagetoolplus.com"`. | X | |
-| `lsp-ltex-plus-lt-username` | L | Username/email for LanguageTool Premium API access. Only relevant when `lsp-ltex-plus-lt-server-uri` is set. *Type:* `nil` or string; *default:* `nil`. | X | X |
-| `lsp-ltex-plus-lt-api-key` | L | API key for LanguageTool Premium API access. Only relevant when `lsp-ltex-plus-lt-server-uri` is set. *Type:* `nil` or string; *default:* `nil`. | X | X |
-| `lsp-ltex-plus-ltex-ls-path` | R | Path to the root directory of ltex-ls-plus (contains `bin` and `lib` subdirectories). *Type:* `nil` or string; *default:* `nil` (use the executable found on `PATH`). | X | |
-| `lsp-ltex-plus-ltex-ls-log-level` | R | Logging level (verbosity) of the ltex-ls-plus server log. *Choices* (descending verbosity): `"severe"`, `"warning"`, `"info"`, `"config"`, `"fine"` (default), `"finer"`, `"finest"`. | X | |
-| `lsp-ltex-plus-java-path` | R | Path to an existing Java installation (same value you would use for `JAVA_HOME`). *Type:* `nil` or string; *default:* `nil` (use the bundled JRE). | X | |
-| `lsp-ltex-plus-java-initial-heap` | R | Initial size of the Java heap in megabytes (`-Xms`). *Type:* integer; *default:* `64`. | X | |
-| `lsp-ltex-plus-java-max-heap` | R | Maximum size of the Java heap in megabytes (`-Xmx`). *Type:* integer; *default:* `512`. | X | |
-| `lsp-ltex-plus-sentence-cache-size` | R | Size of the LanguageTool `ResultCache` in sentences. The default and recommended value `0` disables the local LanguageTool server's own cache entirely: ltex-ls-plus keeps its own per-paragraph cache (see `lsp-ltex-plus-paragraph-cache-enabled`), which supersedes LanguageTool's caching. Use a positive value to turn it back on, but be aware that for the edit loop this is redundant and only adds CPU and memory overhead with no additional benefit. To restore LanguageTool's caching instead, set this positive and also set `lsp-ltex-plus-paragraph-cache-enabled` to nil. *Type:* integer; *default:* `0`. | X | X |
-| `lsp-ltex-plus-max-request-size` | L | Largest amount of text, in characters, sent to LanguageTool in a single request when a run of changed paragraphs is batched together (typically the first, whole-document check). Text exceeding this is split across several requests; an individual paragraph is never split. The default fits within the [per-request character limit](https://languagetool.org/http-api/) of the free remote service; if you use a local server (`lsp-ltex-plus-lt-server-uri` is nil) or have a Premium account, consider raising it to 60000. *Type:* integer; *default:* `20000`. | X | |
-| `lsp-ltex-plus-paragraph-cache-ttl-minutes` | L | How long, in minutes, a document's cached results are kept after they stop being used, before a background sweep drops them. The actively edited file always stays warm, and a document's cache is cleared immediately when the file is closed. *Type:* integer; *default:* `30`. | X | |
-| `lsp-ltex-plus-paragraph-cache-enabled` | L | Whether ltex-ls-plus reuses cached results for unchanged paragraphs so an edit only re-checks the paragraphs that changed. Set to nil to disable result reuse (not recommended) — every paragraph is re-checked on each pass. Paragraphs are still sliced and batched into requests, just never stored or served from the cache. *Type:* boolean; *default:* `t`. | X | |
-| `lsp-ltex-plus-completion-enabled` | L | Controls whether word completion is enabled. Requires an `lsp-mode` build containing [PR #5052](https://github.com/emacs-lsp/lsp-mode/pull/5052) (merged 2026-05-03); see [Recommended `lsp-mode` Revision](#recommended-lsp-mode-revision). *Type:* boolean; *default:* `nil`. | X | |
-| `lsp-ltex-plus-diagnostic-severity` | L | Severity of the diagnostics. *Choices:* `"error"`, `"warning"` (default), `"information"`, `"hint"`. | X | |
-| `lsp-ltex-plus-check-frequency` | L | Controls when documents should be checked. *Choices:* `"edit"` (default, on every keystroke), `"save"` (on open and save), `"manual"` (explicit commands only). | X | |
-| `lsp-ltex-plus-clear-diagnostics-when-closing-file` | L | Whether to clear diagnostics when a file is closed. *Type:* boolean; *default:* `t`. | X | |
-| `lsp-ltex-plus-show-progress` | S | Show `ltex-ls-plus` progress updates in the mode line (the `⌛` prefix and optional spinner). Set to nil to silence the flicker on every keystroke without affecting progress rendering for other LSP clients. *Type:* boolean; *default:* `t`. | | |
-| `lsp-ltex-plus-apply-kind-first-patch` | S | **Deprecated** — see [Recommended `lsp-mode` Revision](#recommended-lsp-mode-revision). Whether to apply the 'Kind-First' routing patch (and four related workarounds) to lsp-mode; all five are now fixed upstream. *Type:* boolean; *default:* `nil`. | | |
-| `lsp-ltex-plus-show-latency` | S | When non-nil, echo the server round-trip time after every check. Reports both the cold start (`"Completed initial spell check in N ms."` after `textDocument/didOpen`) and the warm path (`"Completed spell check in N ms."` after each `textDocument/didChange`); see [Measuring Server Latency](#measuring-server-latency). *Type:* boolean; *default:* `nil`. | | |
-| `lsp-ltex-plus-multi-root` | S | Register the client as multi-root so a single `ltex-ls-plus` JVM handles all folders in the session. Leave enabled unless you have a specific need to isolate projects — disabling it spawns one JVM per project root, which can balloon memory usage. *Type:* boolean; *default:* `t`. | | |
+| Parameter | When applied | Per project | Description | Official LTeX+ Setting | Counterpart in LT Java Library |
+| :--- | :---: | :---: | :--- | :---: | :---: |
+| `lsp-ltex-plus-ls-plus-executable` | R |  | The name or path of the ltex-ls-plus executable. *Type:* string; *default:* `"ltex-ls-plus"`. | | |
+| `lsp-ltex-plus-debug` | R |  | When non-nil, enable verbose logging and JSON-RPC tracing. *Type:* boolean; *default:* `nil`. | | |
+| `lsp-ltex-plus-major-modes` | S† |  | List of `(major-mode language-id programming-p)` triples driving client activation. *Type:* list; *default:* ~80 entries covering markup and programming modes (defined in `lsp-ltex-plus-bootstrap.el`). | | |
+| `lsp-ltex-plus-check-programming-languages` | L† | ✓ | When non-nil, enable grammar checking in comments of programming languages (disabled by default, matching LTeX+). *Type:* boolean; *default:* `nil`. | | |
+| `lsp-ltex-plus-check-fileless-buffers` | S† |  | When non-nil, also check buffers with no backing file (e.g. `*scratch*`, capture buffers); all such buffers share one `ltex-ls-plus` process. See [Checking file-less buffers](#checking-file-less-buffers). *Type:* boolean; *default:* `t`. | | |
+| `lsp-ltex-plus-check-comint-input` | S† |  | When non-nil, check the active input region of `comint-mode` buffers (shells, REPLs, agent shells) — only what you are currently typing, never the output or earlier input. See [Checking comint input](#checking-comint-input-shells-repls-agent-shells). *Type:* boolean; *default:* `t`. | | |
+| `lsp-ltex-plus-language` | L | ✓ | The language LanguageTool should check against (e.g. `"en-US"`, `"de-DE"`). Valid codes are listed on the [LTeX+ supported-languages page](https://ltex-plus.github.io/ltex-plus/supported-languages.html); `"auto"` attempts language detection (not recommended — no spelling). *Type:* string; *default:* `"en-US"`. | X | X |
+| `lsp-ltex-plus-dictionary` | L | ✓ | Additional words accepted as correctly spelled (language-specific). *Type:* plist; *default:* `nil`. See [External settings](#external-settings) for format and behaviour. | X | |
+| `lsp-ltex-plus-enabled-rules` | L | ✓ | Language-specific list of rules to enable. *Type:* plist; *default:* `nil`. See [External settings](#external-settings). | X | X |
+| `lsp-ltex-plus-disabled-rules` | L | ✓ | Language-specific list of rules to disable. *Type:* plist; *default:* `nil`. See [External settings](#external-settings). | X | X |
+| `lsp-ltex-plus-hidden-false-positives` | L | ✓ | Regex-based suppression of false-positive diagnostics (language-specific). *Type:* plist; *default:* `nil`. See [External settings](#external-settings). | X | |
+| `lsp-ltex-plus-project-dictionary-file` | L | ✓ | File holding *this project's* additional accepted words, merged with (never replacing) `lsp-ltex-plus-dictionary` and the personal dictionary file. Normally set from the project's `.dir-locals.el`; a relative name resolves against the directory holding that file. *Type:* `nil` or file; *default:* `nil`. See [Project-local settings](#project-local-settings). | | |
+| `lsp-ltex-plus-project-enabled-rules-file` | L | ✓ | As above, for rules this project enables. *Type:* `nil` or file; *default:* `nil`. | | |
+| `lsp-ltex-plus-project-disabled-rules-file` | L | ✓ | As above, for rules this project disables. *Type:* `nil` or file; *default:* `nil`. | | |
+| `lsp-ltex-plus-project-hidden-false-positives-file` | L | ✓ | As above, for false positives this project hides. *Type:* `nil` or file; *default:* `nil`. | | |
+| `lsp-ltex-plus-save-additions-to` | L | ✓ | Where an accepted suggestion (*Add to dictionary*, *Disable rule …*, *Hide false positive …*) is written. Never affects what is *read* — a document is always checked against both lists. *Choices:* `globally-defined`, `per-project-when-specified` (default), `either-allowing-user-choice`. See [Project-local settings](#project-local-settings). | | |
+| `lsp-ltex-plus-bibtex-fields` | L | ✓\* | BibTeX fields whose values are to be checked. *Type:* alist of `(field-name . boolean)`, where field-name is a symbol; *default:* `nil`. | X | |
+| `lsp-ltex-plus-latex-commands` | L | ✓\* | LaTeX commands to be handled by the LaTeX parser, listed with empty arguments. *Type:* alist of `(command . action)`, where command is a symbol (not a string) with the initial backslash doubled, e.g. `\\ref{}`, `\\documentclass[]{}`; action is `"default"`, `"ignore"`, `"dummy"`, `"pluralDummy"`, or `"vowelDummy"`; *default:* `nil`. | X | |
+| `lsp-ltex-plus-latex-environments` | L | ✓\* | LaTeX environments to be handled by the LaTeX parser. *Type:* alist of `(env-name . action)`, where env-name is a symbol and action is `"default"` or `"ignore"`; *default:* `nil`. | X | |
+| `lsp-ltex-plus-markdown-nodes` | L | ✓\* | Markdown node types to be handled by the Markdown parser. *Type:* alist of `(node-type . action)`, where node-type is a symbol and action is `"default"`, `"ignore"`, `"dummy"`, `"pluralDummy"`, or `"vowelDummy"`; *default:* `nil`. | X | |
+| `lsp-ltex-plus-additional-rules-enable-picky-rules` | L | ✓ | Enable LanguageTool rules marked as picky (e.g. passive voice, sentence length) at the cost of more false positives. *Type:* boolean; *default:* `nil`. | X | X |
+| `lsp-ltex-plus-additional-rules-mother-tongue` | L | ✓ | Optional mother tongue of the user (e.g. `"de-DE"`). When set, enables false-friend detection (picky rules may additionally need to be enabled). *Type:* `nil` or string; *default:* `nil` (disabled). | X | X |
+| `lsp-ltex-plus-additional-rules-language-model` | L | ✓\* | Optional path to a directory with n-gram language models (parent directory containing per-language subfolders). *Type:* `nil` or string; *default:* `nil` (disabled). | X | X |
+| `lsp-ltex-plus-lt-server-uri` | L | ✓\* | Base URI for the LanguageTool HTTP server. Must be a bare host — the server appends `/v2/check`. *Type:* `nil` for local built-in (default) or a string URI such as `"https://api.languagetoolplus.com"`. | X | |
+| `lsp-ltex-plus-lt-username` | L | ✓\* | Username/email for LanguageTool Premium API access. Only relevant when `lsp-ltex-plus-lt-server-uri` is set. *Type:* `nil` or string; *default:* `nil`. | X | X |
+| `lsp-ltex-plus-lt-api-key` | L | ✓\* | API key for LanguageTool Premium API access. Only relevant when `lsp-ltex-plus-lt-server-uri` is set. *Type:* `nil` or string; *default:* `nil`. | X | X |
+| `lsp-ltex-plus-ltex-ls-path` | R |  | Path to the root directory of ltex-ls-plus (contains `bin` and `lib` subdirectories). *Type:* `nil` or string; *default:* `nil` (use the executable found on `PATH`). | X | |
+| `lsp-ltex-plus-ltex-ls-log-level` | R |  | Logging level (verbosity) of the ltex-ls-plus server log. *Choices* (descending verbosity): `"severe"`, `"warning"`, `"info"`, `"config"`, `"fine"` (default), `"finer"`, `"finest"`. | X | |
+| `lsp-ltex-plus-java-path` | R |  | Path to an existing Java installation (same value you would use for `JAVA_HOME`). *Type:* `nil` or string; *default:* `nil` (use the bundled JRE). | X | |
+| `lsp-ltex-plus-java-initial-heap` | R |  | Initial size of the Java heap in megabytes (`-Xms`). *Type:* integer; *default:* `64`. | X | |
+| `lsp-ltex-plus-java-max-heap` | R |  | Maximum size of the Java heap in megabytes (`-Xmx`). *Type:* integer; *default:* `512`. | X | |
+| `lsp-ltex-plus-sentence-cache-size` | R |  | Size of the LanguageTool `ResultCache` in sentences. The default and recommended value `0` disables the local LanguageTool server's own cache entirely: ltex-ls-plus keeps its own per-paragraph cache (see `lsp-ltex-plus-paragraph-cache-enabled`), which supersedes LanguageTool's caching. Use a positive value to turn it back on, but be aware that for the edit loop this is redundant and only adds CPU and memory overhead with no additional benefit. To restore LanguageTool's caching instead, set this positive and also set `lsp-ltex-plus-paragraph-cache-enabled` to nil. *Type:* integer; *default:* `0`. | X | X |
+| `lsp-ltex-plus-max-request-size` | L | ✓\* | Largest amount of text, in characters, sent to LanguageTool in a single request when a run of changed paragraphs is batched together (typically the first, whole-document check). Text exceeding this is split across several requests; an individual paragraph is never split. The default fits within the [per-request character limit](https://languagetool.org/http-api/) of the free remote service; if you use a local server (`lsp-ltex-plus-lt-server-uri` is nil) or have a Premium account, consider raising it to 60000. *Type:* integer; *default:* `20000`. | X | |
+| `lsp-ltex-plus-paragraph-cache-ttl-minutes` | L | ✓\* | How long, in minutes, a document's cached results are kept after they stop being used, before a background sweep drops them. The actively edited file always stays warm, and a document's cache is cleared immediately when the file is closed. *Type:* integer; *default:* `30`. | X | |
+| `lsp-ltex-plus-paragraph-cache-enabled` | L | ✓\* | Whether ltex-ls-plus reuses cached results for unchanged paragraphs so an edit only re-checks the paragraphs that changed. Set to nil to disable result reuse (not recommended) — every paragraph is re-checked on each pass. Paragraphs are still sliced and batched into requests, just never stored or served from the cache. *Type:* boolean; *default:* `t`. | X | |
+| `lsp-ltex-plus-completion-enabled` | L | ✓\* | Controls whether word completion is enabled. Requires an `lsp-mode` build containing [PR #5052](https://github.com/emacs-lsp/lsp-mode/pull/5052) (merged 2026-05-03); see [Recommended `lsp-mode` Revision](#recommended-lsp-mode-revision). *Type:* boolean; *default:* `nil`. | X | |
+| `lsp-ltex-plus-diagnostic-severity` | L | ✓ | Severity of the diagnostics. *Choices:* `"error"`, `"warning"` (default), `"information"`, `"hint"`. | X | |
+| `lsp-ltex-plus-check-frequency` | L | ✓ | Controls when documents should be checked. *Choices:* `"edit"` (default, on every keystroke), `"save"` (on open and save), `"manual"` (explicit commands only). | X | |
+| `lsp-ltex-plus-clear-diagnostics-when-closing-file` | L | ✓\* | Whether to clear diagnostics when a file is closed. *Type:* boolean; *default:* `t`. | X | |
+| `lsp-ltex-plus-show-progress` | S |  | Show `ltex-ls-plus` progress updates in the mode line (the `⌛` prefix and optional spinner). Set to nil to silence the flicker on every keystroke without affecting progress rendering for other LSP clients. *Type:* boolean; *default:* `t`. | | |
+| `lsp-ltex-plus-apply-kind-first-patch` | S |  | **Deprecated** — see [Recommended `lsp-mode` Revision](#recommended-lsp-mode-revision). Whether to apply the 'Kind-First' routing patch (and four related workarounds) to lsp-mode; all five are now fixed upstream. *Type:* boolean; *default:* `nil`. | | |
+| `lsp-ltex-plus-show-latency` | S |  | When non-nil, echo the server round-trip time after every check. Reports both the cold start (`"Completed initial spell check in N ms."` after `textDocument/didOpen`) and the warm path (`"Completed spell check in N ms."` after each `textDocument/didChange`); see [Measuring Server Latency](#measuring-server-latency). *Type:* boolean; *default:* `nil`. | | |
+| `lsp-ltex-plus-multi-root` | S |  | Register the client as multi-root so a single `ltex-ls-plus` JVM handles all folders in the session. Leave enabled unless you have a specific need to isolate projects — disabling it spawns one JVM per project root, which can balloon memory usage. *Type:* boolean; *default:* `t`. | | |
 
+> **"Per project" legend:** whether the setting can be given a different value in one project via a `.dir-locals.el`, which the client honours because it answers the server's configuration requests from the buffer holding the document being checked (see [Project-local settings](#project-local-settings)).
+>
+> - **✓** — applies per project silently; the package declares the value safe once it passes a type check.
+> - **✓\*** — applies per project, but Emacs asks you to confirm the value the first time, as it does for any variable no package has vouched for.
+> - *(blank)* — global only: read once at server start or at client setup, so a project-local value would have nothing to act on.
+>
 > **"When applied" legend:**
 >
-> - **L** — *Live*: read by the client on every `workspace/configuration` pull, which the server issues before each diagnostic publish. A plain `setq` is honoured on the next edit — no manual notification, no restart.
+> - **L** — *Live*: read by the client at the moment it is needed — on every `workspace/configuration` pull, which the server issues before each diagnostic publish, or (for `lsp-ltex-plus-save-additions-to`) at the moment you accept a suggestion. A plain `setq` is honoured straight away — no manual notification, no restart.
 > - **R** — *Requires server restart*: the server reads the value at JVM init only. Change the variable, then run `M-x lsp-workspace-restart` for it to take effect.
 > - **S** — *Setup-only*: wired during `lsp-ltex-plus--setup` (the first time a supported buffer is opened in the Emacs session). Typically installed via `advice-add` or baked into the `lsp-register-client` call. Changing the variable later with `setq` or `customize-set-variable` does not re-apply the change. To force a mid-session update, restart Emacs or evaluate `M-: (lsp-ltex-plus--setup)`.
 >
@@ -454,7 +465,7 @@ Alongside the in-Emacs parameters above, `lsp-ltex-plus` relies on four pieces o
 
 Each file is a per-language plist under `~/.emacs.d/lsp-ltex-plus/`, with language keys (`:en-US`, `:de-DE`, …) mapped to vectors of strings. Settings provided via `:custom` and via the file are kept separate: the defcustom settings are never mutated, and they are never written to disk. The server sees their merge.
 
-Code actions update the relevant file and notify the server, so the change takes effect on the next check without a restart.
+Code actions update the relevant file and notify the server, so the change takes effect on the next check without a restart. Which file they update depends on `lsp-ltex-plus-save-additions-to` once a project keeps lists of its own — see [Project-local settings](#project-local-settings) below.
 
 | File (under `~/.emacs.d/lsp-ltex-plus/`) | `:custom` variable (defcustom) | Written by code action? | Provenance |
 | :--- | :--- | :---: | :---: |
@@ -511,6 +522,30 @@ The dictionary is an **LTeX+ feature**, not a LanguageTool one. The `/check` HTT
 
 - If a rule produces *only* noise for your writing style, **disable the rule** — it's faster, cheaper, and covers everything.
 - If a rule is usually right but wrong on one recurring phrase or idiom, **hide the false positive** — the rule keeps working everywhere else, and only that specific text stops being flagged.
+
+#### Project-local settings
+
+Everything above describes lists that follow you everywhere. A project can also keep its **own** lists — the jargon of one book, the rule you only silence in one repository — beside your personal ones, without either shadowing the other.
+
+Point one or more of the four project settings at a file from the project's `.dir-locals.el`:
+
+```elisp
+;; .dir-locals.el at the root of your project
+((nil . ((lsp-ltex-plus-project-dictionary-file . ".ltex/dictionary.eld")
+         (lsp-ltex-plus-project-disabled-rules-file . ".ltex/disabled-rules.eld"))))
+```
+
+The files use the same plist format as the personal ones, and each is optional: configure only a dictionary and the project collects words while your personal rule choices stay personal.
+
+**Both lists are read; neither wins.** A word you accepted everywhere stays accepted inside the project, and the project's own words are added on top. The project settings decide what a project *adds*, never what it takes away.
+
+**A relative name resolves against the directory holding the `.dir-locals.el` that set it** — not against the file being checked. Every document in the project therefore agrees on one location however deep it sits, and moving or renaming the project moves the setting with it. There is no separate notion of a "project root": `.dir-locals.el` already decides which files a setting governs, so Emacs' own rules apply, nested projects included. Buffers with no file at all — `*scratch*`, comint input — have no directory-local variables and so use your personal lists alone.
+
+**Where new entries go** is `lsp-ltex-plus-save-additions-to`. By default (`per-project-when-specified`) accepting a suggestion writes to the project's file when the project keeps one for that kind of entry, and to your personal file otherwise — so a suggestion is never a dead end. Set it to `globally-defined` to have a project's list read but only ever hand-edited. Set it to `either-allowing-user-choice` and each such suggestion appears twice among the quick fixes, once *— everywhere* and once *— in this project only*; you pick as you accept, and the entry goes to exactly one of them.
+
+Because this is an ordinary setting, a single project can depart from your usual habit by setting it in its own `.dir-locals.el`.
+
+**On confirmation prompts.** Emacs asks before applying a directory-local variable unless the package has vouched for the value. This package vouches for the settings marked **✓** in the parameter table, once the value passes a type check — so a project's `.dir-locals.el` normally just works. The four project *file* settings are held to a stricter check, because this package writes to them: only a relative name with no `..` component is accepted silently. An absolute path (or one starting with `~`) still works, but Emacs will ask you to confirm it, so that cloning someone's repository cannot quietly redirect where your word lists are read from and written to.
 
 #### Inspecting and editing
 
