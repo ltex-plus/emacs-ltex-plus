@@ -108,13 +108,16 @@
 ;;     asks before a repository you cloned can set them.  Do not "complete"
 ;;     the set by adding `:safe' to them:
 ;;
-;;       `lsp-ltex-plus-lt-server-uri'  names the host every document you edit
-;;           is sent to for checking.  A silent project-local value would be an
-;;           exfiltration channel, not a preference.
 ;;       `lsp-ltex-plus-lt-username', `lsp-ltex-plus-lt-api-key'
 ;;           are credentials; a project has no business setting them quietly.
 ;;       `lsp-ltex-plus-additional-rules-language-model'
 ;;           is an arbitrary directory the server reads from.
+;;
+;;     `lsp-ltex-plus-lt-server-uri' is the middle case: it names the host
+;;     every document you edit is sent to, so it is vouched for by an
+;;     allowlist of destinations rather than by a type check.  Unset and
+;;     LanguageTool Premium pass; any other host still asks.  See
+;;     `lsp-ltex-plus--lt-server-uri-safe-p'.
 ;;
 ;;     Settings read only at server start or at client setup carry no `:safe'
 ;;     either — not because they are dangerous, but because a project-local
@@ -405,14 +408,44 @@ languages.  nil means unset."
   :type '(choice (const :tag "Unset" nil) (directory :tag "Directory"))
   :group 'lsp-ltex-plus)
 
+(defconst lsp-ltex-plus--vouched-lt-server-uris
+  '("https://api.languagetoolplus.com"
+    "https://api.languagetoolplus.com/")
+  "LanguageTool endpoints a project may select without being asked.
+Only LanguageTool's own Premium service.  Everything reached through
+this setting receives the full text of every document you edit, so the
+list is an allowlist of destinations, not a syntax check: any other
+host stays subject to Emacs' usual confirmation.")
+
+(defun lsp-ltex-plus--lt-server-uri-safe-p (value)
+  "Non-nil when VALUE is an endpoint safe to accept from a `.dir-locals.el'.
+Unset (nil, or the empty string an older config may still carry) means
+the local built-in LanguageTool and sends nothing anywhere.  The only
+remote destination vouched for is LanguageTool's own Premium service;
+see `lsp-ltex-plus--vouched-lt-server-uris'.  Between them these are
+what nearly every configuration uses, so the prompt is reserved for the
+case that genuinely warrants one: a project pointing your prose at some
+other host."
+  (or (null value)
+      (and (stringp value)
+           (or (equal value "")
+               (member value lsp-ltex-plus--vouched-lt-server-uris)))))
+
 (defcustom lsp-ltex-plus-lt-server-uri nil
   "Base URI for the LanguageTool HTTP server.
 When nil (default), ltex-ls-plus uses its local, built-in LanguageTool.
 To use an online service, set this to e.g.,
 \"https://api.languagetoolplus.com\".
-Note: ltex-ls-plus appends /v2/check to this, so omit the /v2 suffix here."
+Note: ltex-ls-plus appends /v2/check to this, so omit the /v2 suffix here.
+
+Whatever this points at receives the full text of every document you
+edit.  A project may therefore select the built-in checker or
+LanguageTool Premium through its `.dir-locals.el' without being asked,
+but any other host goes through Emacs' usual confirmation; see
+`lsp-ltex-plus--lt-server-uri-safe-p'."
   :type '(choice (const :tag "Local (Built-in)" nil)
                  (string :tag "Remote URI"))
+  :safe #'lsp-ltex-plus--lt-server-uri-safe-p
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-lt-username nil
