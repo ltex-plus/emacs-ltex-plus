@@ -897,47 +897,135 @@ change applied without reloading."
 
 ;;;; -- Custom Request Handlers ------------------------------------------------
 
-(defun lsp-ltex-plus--request-workspace-specific-configuration (_workspace params)
+;; The server pulls settings once per check, and tags every pull with the URI of
+;; the document it is about to check (`scopeUri' on each requested item).
+;; lsp-mode's generic responder ignores that tag: it answers from whichever
+;; buffer happens to come first in the workspace's buffer list, so with several
+;; projects open one project's directory-local variables can end up answering
+;; for a document in another.  Both handlers below resolve the URI to its buffer
+;; and read the settings there instead, which is what gives `.dir-locals.el' a
+;; meaning for this client.
+;;
+;; This is an intended extension point, not a workaround: lsp-mode consults a
+;; client's own `:request-handlers' before its generic path, and the bundled
+;; `lsp-eslint' client resolves `scopeUri' in exactly this way.
+
+(defun lsp-ltex-plus--buffer-for-uri (uri)
+  "Return the buffer whose LSP document URI is URI, or nil.
+Buffers visiting a real file are found through Emacs' own file-to-buffer
+index.  File-less and comint buffers visit no file and instead carry a
+synthetic URI in `lsp-buffer-uri' (see `lsp-ltex-plus--make-fileless-uri'),
+so they are located by scanning for the marker this package sets on them."
+  (when uri
+    (or (ignore-errors (find-buffer-visiting (lsp--uri-to-path uri)))
+        (seq-find (lambda (buf)
+                    (with-current-buffer buf
+                      (and lsp-ltex-plus--fileless-uri
+                           (equal lsp-buffer-uri uri))))
+                  (buffer-list)))))
+
+(defun lsp-ltex-plus--call-in-document-context (workspace uri fn)
+  "Call FN with no arguments, with the buffer for URI current.
+WORKSPACE is made the active workspace throughout, mirroring what
+lsp-mode does around its own configuration responder.
+
+When URI resolves to no live buffer — it was killed between the check
+starting and the pull arriving — fall back to a temporary buffer under
+the workspace root with directory-local variables applied, so a project's
+settings still answer for its own documents.  Workspaces holding only
+file-less buffers have no root; there FN runs in the current buffer,
+which leaves the global values in force.  That is the right answer for a
+scratch or comint buffer, since it belongs to no project."
+  (with-lsp-workspace workspace
+    (let ((buffer (lsp-ltex-plus--buffer-for-uri uri))
+          (root (lsp--workspace-root workspace)))
+      (cond
+       (buffer (with-current-buffer buffer (funcall fn)))
+       (root (lsp--with-workspace-temp-buffer root (funcall fn)))
+       (t (funcall fn))))))
+
+(defmacro lsp-ltex-plus--with-document-context (workspace uri &rest body)
+  "Evaluate BODY in the buffer identified by URI, inside WORKSPACE.
+See `lsp-ltex-plus--call-in-document-context' for how URI is resolved and
+what happens when it names no live buffer."
+  (declare (indent 2) (debug t))
+  `(lsp-ltex-plus--call-in-document-context ,workspace ,uri (lambda () ,@body)))
+
+(defun lsp-ltex-plus--configuration-section (section)
+  "Return the settings object lsp-mode would build for SECTION.
+Read from the current buffer, so buffer-local and directory-local values
+win.  The two functions called here are the same ones lsp-mode's generic
+responder uses, so the shape of the answer — including the handling of
+dotted section names and of an omitted section — stays identical to it."
+  (if section
+      (lsp--section-workspace-configuration section)
+    (lsp--default-workspace-configuration)))
+
+(defun lsp-ltex-plus--request-configuration (workspace params)
+  "Handle the standard `workspace/configuration' request per document.
+
+Replaces lsp-mode's generic responder for this client only, so that each
+requested item is answered from the buffer its `scopeUri' names rather
+than from an arbitrary buffer of the workspace.  Other servers running
+alongside this one are unaffected: request handlers are per-client.
+
+PARAMS carries `items', a vector of `(scopeUri URI, section SECTION)'.
+The reply is a vector of settings objects, one per item, in order."
+  (lsp-ltex-plus--log "workspace/configuration request: %S" params)
+  (vconcat
+   (seq-map (lambda (item)
+              (lsp-ltex-plus--with-document-context workspace (lsp-get item :scopeUri)
+                (lsp-ltex-plus--configuration-section (lsp-get item :section))))
+            (lsp-get params :items))))
+
+(defun lsp-ltex-plus--workspace-specific-entry ()
+  "Return the language-keyed settings for the document in the current buffer.
+
+The four fields are JSON objects per VS Code's TS type
+`LanguageSpecificSettingValue' — never nullable.  `lsp-ltex-plus--obj-or-empty'
+substitutes the shared empty hash-table for nil so `json-serialize' emits
+`{}' rather than `null'; see that helper's docstring for the underlying
+ambiguity.
+
+The values are still the global merged ones: this function is the single
+place a project-specific word list has to enter, and reading them here
+rather than at the call site is what makes that a local change."
+  (list :dictionary           (lsp-ltex-plus--obj-or-empty lsp-ltex-plus--dictionary-merged)
+        :disabledRules        (lsp-ltex-plus--obj-or-empty lsp-ltex-plus--disabled-rules-merged)
+        :enabledRules         (lsp-ltex-plus--obj-or-empty lsp-ltex-plus--enabled-rules-merged)
+        :hiddenFalsePositives (lsp-ltex-plus--obj-or-empty lsp-ltex-plus--hidden-false-positives-merged)))
+
+(defun lsp-ltex-plus--request-workspace-specific-configuration (workspace params)
   "Handle the custom `ltex/workspaceSpecificConfiguration' request.
 
 PARAMS carries `items', a vector of `(scopeUri URI, section SECTION)'.
-For each requested item we return the same merged language-keyed maps
-\(`dictionary', `disabledRules', `enabledRules', `hiddenFalsePositives'),
-mirroring VS Code's `WorkspaceConfigurationRequestHandler'.
+For each item we return the merged language-keyed maps (`dictionary',
+`disabledRules', `enabledRules', `hiddenFalsePositives'), mirroring VS
+Code's `WorkspaceConfigurationRequestHandler'.
 
-Per-scope differentiation is intentionally not implemented: every URI
-receives the same global merged values.  See the \"Hierarchical scope
-support\" item in CLAUDE.md for what would be needed to honour scopeUri.
+When the client advertises support for this request the server takes
+those four settings from here alone and ignores whatever the standard
+`workspace/configuration' reply said about them, which is why this is
+the handler that decides which dictionary a document is checked against.
+
+Each item is answered from the buffer its `scopeUri' names; see
+`lsp-ltex-plus--call-in-document-context'.
 
 PARAMS may arrive as either a plist (when `lsp-use-plists' is non-nil)
 or a hash-table (the default).  We read it via `lsp-get', the
-representation-agnostic accessor exported by lsp-mode, and count the
-items defensively for both vector and list shapes.
+representation-agnostic accessor exported by lsp-mode.
 
 The result is a vector — one entry per requested item — to match the
 shape `vscode-languageclient' returns to the server.  Each entry is a
 plist with keyword keys; `json-serialize' converts those to JSON object
 keys regardless of `lsp-use-plists', so no hash-table conversion on the
-outgoing side is needed (except for empty maps, where
-`lsp-ltex-plus--obj-or-empty' substitutes the shared empty hash-table)."
+outgoing side is needed."
   (lsp-ltex-plus--log "ltex/workspaceSpecificConfiguration request: %S" params)
-  (let* ((items (lsp-get params :items))
-         (count (cond ((vectorp items) (length items))
-                      ((listp items) (length items))
-                      (t 0)))
-         ;; The four fields below are JSON objects per VS Code's TS type
-         ;; `LanguageSpecificSettingValue' — never nullable.  Use
-         ;; `lsp-ltex-plus--obj-or-empty' to substitute the shared empty
-         ;; hash-table for nil so `json-serialize' emits `{}' rather than
-         ;; `null'.  See the helper's docstring for the underlying ambiguity.
-         (entry (list :dictionary           (lsp-ltex-plus--obj-or-empty lsp-ltex-plus--dictionary-merged)
-                      :disabledRules        (lsp-ltex-plus--obj-or-empty lsp-ltex-plus--disabled-rules-merged)
-                      :enabledRules         (lsp-ltex-plus--obj-or-empty lsp-ltex-plus--enabled-rules-merged)
-                      :hiddenFalsePositives (lsp-ltex-plus--obj-or-empty lsp-ltex-plus--hidden-false-positives-merged)))
-         (result (make-vector count nil)))
-    (dotimes (i count)
-      (aset result i (copy-sequence entry)))
-    result))
+  (vconcat
+   (seq-map (lambda (item)
+              (lsp-ltex-plus--with-document-context workspace (lsp-get item :scopeUri)
+                (lsp-ltex-plus--workspace-specific-entry)))
+            (lsp-get params :items))))
 
 
 ;;;; -- Lsp-mode Protocol Patches -----------------------------------------------
@@ -1726,10 +1814,11 @@ variable nil."
     ;; dictionaries / disabled rules / etc. that it needs to re-check the
     ;; document.
     ;;
-    ;; See `lsp-ltex-plus--request-workspace-specific-configuration' below for
-    ;; the handler that answers the custom request.  `workspace/configuration'
-    ;; is answered automatically by lsp-mode from the data registered above via
-    ;; `lsp-register-custom-settings'.
+    ;; Both pulls are answered by this package rather than by lsp-mode's
+    ;; generic responder, so that each one is answered from the buffer holding
+    ;; the document the server asked about.  See the commentary above
+    ;; `lsp-ltex-plus--buffer-for-uri' for why that matters and why overriding
+    ;; is the supported way to get it.
     ;;
     ;; This custom capability mirrors VS Code's `vscode-ltex-plus' extension,
     ;; specifically its
@@ -1739,7 +1828,9 @@ variable nil."
     (lambda ()
       '(:customCapabilities (:workspaceSpecificConfiguration t)))
     :request-handlers
-    (lsp-ht ("ltex/workspaceSpecificConfiguration"
+    (lsp-ht ("workspace/configuration"
+             #'lsp-ltex-plus--request-configuration)
+            ("ltex/workspaceSpecificConfiguration"
              #'lsp-ltex-plus--request-workspace-specific-configuration))))
   (lsp-ltex-plus--log "lsp-ltex-plus--setup completed."))
 
