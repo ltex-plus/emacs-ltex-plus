@@ -387,7 +387,7 @@ You can configure the parameters using `:custom` in `use-package`:
 
 ### Full list of supported parameters
 
-The table below lists every parameter this Emacs client exposes. The **When applied** column (col. 2) shows when a change to the variable takes effect — see the legend below the table. Crosses denote parameters for which a counterpart exists in LTeX+ (col. 4) and in the underlying LanguageTool itself (col. 5) — either the [`/check` HTTP parameter](https://languagetoolplus.com/http-api/) or the equivalent concept in the [Java library](https://github.com/languagetool-org/languagetool).
+The table below lists every parameter this Emacs client exposes. **When applied** shows when a change to the variable takes effect, and **Per project** whether it can be given its own value in a single project — both explained in the legend below the table. A cross under **Official LTeX+ Setting** or **Counterpart in LT Java Library** marks a parameter that has an equivalent at that layer: either the [`/check` HTTP parameter](https://languagetoolplus.com/http-api/) or the equivalent concept in the [Java library](https://github.com/languagetool-org/languagetool).
 
 An empty space means the parameter has no direct counterpart at that layer: typically an Emacs-only concern (e.g., UI behaviour, mode registration) or an LTeX+-only feature (e.g., user custom dictionaries for individual languages).
 
