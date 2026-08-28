@@ -316,7 +316,7 @@ Once active, LTeX+ works just like any other LSP server:
 
 - **Diagnostics:** Errors and warnings will be highlighted in your buffer.
 - **Code Actions:** Use your standard `lsp-execute-code-action` (usually `s-l a` or `C-c l a`) to:
-    - Add a word to your personal dictionary.
+    - Add a word to your global dictionary.
     - Disable a specific rule you don't like.
     - Ignore a false positive.
 
@@ -404,7 +404,7 @@ An empty space means the parameter has no direct counterpart at that layer: typi
 | `lsp-ltex-plus-enabled-rules` | L | ✓ | Language-specific list of rules to enable. *Type:* plist; *default:* `nil`. See [External settings](#external-settings). | X | X |
 | `lsp-ltex-plus-disabled-rules` | L | ✓ | Language-specific list of rules to disable. *Type:* plist; *default:* `nil`. See [External settings](#external-settings). | X | X |
 | `lsp-ltex-plus-hidden-false-positives` | L | ✓ | Regex-based suppression of false-positive diagnostics (language-specific). *Type:* plist; *default:* `nil`. See [External settings](#external-settings). | X | |
-| `lsp-ltex-plus-project-dictionary-file` | L | ✓ | File holding *this project's* additional accepted words, merged with (never replacing) `lsp-ltex-plus-dictionary` and the personal dictionary file. Normally set from the project's `.dir-locals.el`; a relative name resolves against the directory holding that file. *Type:* `nil` or file; *default:* `nil`. See [Project-local settings](#project-local-settings). | | |
+| `lsp-ltex-plus-project-dictionary-file` | L | ✓ | File holding *this project's* additional accepted words, merged with (never replacing) `lsp-ltex-plus-dictionary` and the global dictionary file. Normally set from the project's `.dir-locals.el`; a relative name resolves against the directory holding that file. *Type:* `nil` or file; *default:* `nil`. See [Project-local settings](#project-local-settings). | | |
 | `lsp-ltex-plus-project-enabled-rules-file` | L | ✓ | As above, for rules this project enables. *Type:* `nil` or file; *default:* `nil`. | | |
 | `lsp-ltex-plus-project-disabled-rules-file` | L | ✓ | As above, for rules this project disables. *Type:* `nil` or file; *default:* `nil`. | | |
 | `lsp-ltex-plus-project-hidden-false-positives-file` | L | ✓ | As above, for false positives this project hides. *Type:* `nil` or file; *default:* `nil`. | | |
@@ -521,7 +521,7 @@ The dictionary is an **LTeX+ feature**, not a LanguageTool one. The `/check` HTT
 
 #### Project-local settings
 
-Everything above describes lists that follow you everywhere. A project can also keep its **own** lists — the jargon of one book, the rule you only silence in one repository — beside your personal ones, without either shadowing the other.
+Everything above describes lists that follow you everywhere. A project can also keep its **own** lists — the jargon of one book, the rule you only silence in one repository — beside your global ones, without either shadowing the other.
 
 Point one or more of the four project settings at a file from the project's `.dir-locals.el`:
 
@@ -531,11 +531,11 @@ Point one or more of the four project settings at a file from the project's `.di
          (lsp-ltex-plus-project-disabled-rules-file . ".ltex/disabled-rules.eld"))))
 ```
 
-The files use the same plist format as the personal ones, and each is optional: configure only a dictionary and the project collects words while your personal rule choices stay personal.
+The files use the same plist format as the global ones, and each is optional: configure only a dictionary and the project collects words while your global rule choices stay global.
 
 **Both lists are read; neither wins.** A word you accepted everywhere stays accepted inside the project, and the project's own words are added on top. The project settings decide what a project *adds*, never what it takes away.
 
-**A relative name resolves against the directory holding the `.dir-locals.el` that set it** — not against the file being checked. Every document in the project therefore agrees on one location however deep it sits, and moving or renaming the project moves the setting with it. There is no separate notion of a "project root": `.dir-locals.el` already decides which files a setting governs, so Emacs' own rules apply, nested projects included. Buffers with no file at all — `*scratch*`, comint input — have no directory-local variables and so use your personal lists alone.
+**A relative name resolves against the directory holding the `.dir-locals.el` that set it** — not against the file being checked. Every document in the project therefore agrees on one location however deep it sits, and moving or renaming the project moves the setting with it. There is no separate notion of a "project root": `.dir-locals.el` already decides which files a setting governs, so Emacs' own rules apply, nested projects included. Buffers with no file at all — `*scratch*`, comint input — have no directory-local variables and so use your global lists alone.
 
 **Where new entries go** is `lsp-ltex-plus-save-additions-to`. By default (`either-allowing-user-choice`) each such suggestion appears twice among the quick fixes — *Add 'foo' to project dictionary* beside *Add 'foo' to global dictionary*, and likewise *Disable rule for this project* beside *Disable rule globally*. You pick as you accept, and the entry goes to exactly one of them, never both. If you always want the same one, set `per-project-when-specified` to use the project's file whenever it keeps one for that kind of entry, or `globally-defined` to have a project's list read but only ever hand-edited.
 

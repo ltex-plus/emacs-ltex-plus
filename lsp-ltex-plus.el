@@ -974,15 +974,15 @@ change applied without reloading."
 
 ;;;; -- Project-local settings -------------------------------------------------
 
-;; A project can keep its own word list and rule lists beside the personal ones
-;; under `user-emacs-directory'.  The four variables below mirror the personal
+;; A project can keep its own word list and rule lists beside the global ones
+;; under `user-emacs-directory'.  The four variables below mirror the global
 ;; `lsp-ltex-plus-*-file' ones and are normally set from a project's
 ;; `.dir-locals.el'; each names a file whose contents are merged with the
-;; corresponding personal list for documents in that project.  Neither side
+;; corresponding global list for documents in that project.  Neither side
 ;; shadows the other: a word present in either list is accepted, so a project
 ;; adds its jargon on top of the vocabulary you carry everywhere.  Each is
 ;; independent, so a project can bring its own dictionary while still using
-;; your personal rule lists.
+;; your global rule lists.
 ;;
 ;; The project boundary is Emacs' own.  `.dir-locals.el' already decides which
 ;; files a setting governs, and the per-document handlers answer each pull from
@@ -990,7 +990,7 @@ change applied without reloading."
 ;; lists that apply to it.  Nothing here needs a notion of "project root".
 ;;
 ;; Buffers with no file — `*scratch*', comint input — have no directory-local
-;; variables and therefore no project files, so they see the personal lists
+;; variables and therefore no project files, so they see the global lists
 ;; alone.  That is the right answer: they belong to no project.
 
 (defun lsp-ltex-plus--project-file-safe-p (value)
@@ -1007,14 +1007,14 @@ for the same reason."
            (not (member ".." (split-string value "/" t))))))
 
 (defmacro lsp-ltex-plus--define-project-file (name file description)
-  "Define NAME as the project counterpart of a personal settings file.
+  "Define NAME as the project counterpart of a global settings file.
 FILE is the suggested basename shown in the docstring and DESCRIPTION
 names what the file holds."
   `(defcustom ,name nil
      ,(format "File holding this project's %s, or nil for none.
 
 Set this from a project's `.dir-locals.el' to give the project its own
-list, merged with — never replacing — the personal one:
+list, merged with — never replacing — the global one:
 
   ((nil . ((%s
             . \"%s\"))))
@@ -1025,7 +1025,7 @@ location however deep it sits, and moving the project moves the setting
 with it.  An absolute name (or one starting with `~') is used as given,
 but is not treated as safe: Emacs will ask before applying it.
 
-The format is the same plist the personal files use — language codes as
+The format is the same plist the global files use — language codes as
 keyword keys, vectors of strings as values, e.g.
 
   (:en-US [\"Wittgenstein\"] :de-DE [\"Widerspiegelung\"])"
@@ -1051,33 +1051,33 @@ keyword keys, vectors of strings as values, e.g.
   '((dictionary
      :merged        lsp-ltex-plus--dictionary-merged
      :stored        lsp-ltex-plus--dictionary-stored
-     :personal-file lsp-ltex-plus-dictionary-file
+     :global-file lsp-ltex-plus-dictionary-file
      :project-file  lsp-ltex-plus-project-dictionary-file
      :command       "_ltex.addToDictionary")
     (enabled-rules
      :merged        lsp-ltex-plus--enabled-rules-merged
      :stored        lsp-ltex-plus--enabled-rules-stored
-     :personal-file lsp-ltex-plus-enabled-rules-file
+     :global-file lsp-ltex-plus-enabled-rules-file
      :project-file  lsp-ltex-plus-project-enabled-rules-file
      :command       nil)
     (disabled-rules
      :merged        lsp-ltex-plus--disabled-rules-merged
      :stored        lsp-ltex-plus--disabled-rules-stored
-     :personal-file lsp-ltex-plus-disabled-rules-file
+     :global-file lsp-ltex-plus-disabled-rules-file
      :project-file  lsp-ltex-plus-project-disabled-rules-file
      :command       "_ltex.disableRules")
     (hidden-false-positives
      :merged        lsp-ltex-plus--hidden-false-positives-merged
      :stored        lsp-ltex-plus--hidden-false-positives-stored
-     :personal-file lsp-ltex-plus-hidden-false-positives-file
+     :global-file lsp-ltex-plus-hidden-false-positives-file
      :project-file  lsp-ltex-plus-project-hidden-false-positives-file
      :command       "_ltex.hideFalsePositives"))
   "The four language-keyed settings, by kind.
 Each entry maps a kind to the variables behind it:
 
-  :merged         the personal value the server is shown
-  :stored         the in-memory mirror of the personal file
-  :personal-file  the personal file under `user-emacs-directory'
+  :merged         the global value the server is shown
+  :stored         the in-memory mirror of the global file
+  :global-file  the global file under `user-emacs-directory'
   :project-file   the setting naming a project's own file, if it has one
   :command        the server command whose suggestion writes here, or nil
                   for `enabled-rules', which no suggestion writes to")
@@ -1124,16 +1124,16 @@ relative value resolves against the directory holding the
 
 (defun lsp-ltex-plus--effective-plist (kind)
   "Return KIND as the server should see it for the document in this buffer.
-The personal value — the user's defcustom merged with the file under
+The global value — the user's defcustom merged with the file under
 `user-emacs-directory' — extended with this project's file, if it has
 one.  KIND is a key of `lsp-ltex-plus--setting-kinds'."
-  (let ((personal (symbol-value (lsp-ltex-plus--kind-get kind :merged)))
+  (let ((global (symbol-value (lsp-ltex-plus--kind-get kind :merged)))
         (file (lsp-ltex-plus--project-file-for kind)))
     (if file
         (lsp-ltex-plus--merge-plists
-         personal
+         global
          (lsp-ltex-plus--load-project-plist file))
-      personal)))
+      global)))
 
 (defun lsp-ltex-plus--project-file-for (kind)
   "Return this buffer's project file for KIND, or nil if it has none."
@@ -1143,7 +1143,7 @@ one.  KIND is a key of `lsp-ltex-plus--setting-kinds'."
 
 ;; Accepting a suggestion — a word to accept, a rule to switch off, a false
 ;; positive to hide — adds an entry to one of the lists.  Reading always
-;; merges the personal and project lists; this only decides which file a *new*
+;; merges the global and project lists; this only decides which file a *new*
 ;; entry is written to.  Being an ordinary setting, it can itself be set from
 ;; a project's `.dir-locals.el', so one project can depart from the habit you
 ;; keep everywhere else.
@@ -1168,8 +1168,8 @@ newly accepted word, silenced rule or hidden false positive is written.
   `per-project-when-specified'
       The project's file when this project keeps one for that kind of
       entry, and your own file otherwise.  A project that configures
-      only a dictionary therefore collects words while your personal
-      rule choices stay personal.  Set this once you know which you
+      only a dictionary therefore collects words while your global
+      rule choices stay global.  Set this once you know which you
       want and would rather not be asked.
 
   `either-allowing-user-choice' (default)
@@ -1205,26 +1205,26 @@ write."
 (defconst lsp-ltex-plus--target-marker :ltexPlusSaveTo)
 
 (defun lsp-ltex-plus--addition-target (kind command)
-  "Return `project' or `personal': where KIND's addition from COMMAND goes.
+  "Return `project' or `global': where KIND's addition from COMMAND goes.
 A COMMAND carrying the marker left by `lsp-ltex-plus--split-suggestion'
 says so itself; otherwise `lsp-ltex-plus-save-additions-to' decides.
-Falls back to `personal' whenever the project offers no file for KIND,
+Falls back to `global' whenever the project offers no file for KIND,
 so a suggestion is never a dead end."
   (let ((marker (and command (lsp-get command lsp-ltex-plus--target-marker)))
         (project (lsp-ltex-plus--project-file-for kind)))
     (cond
-     ((not project) 'personal)
+     ((not project) 'global)
      ((equal marker "project") 'project)
-     ((equal marker "global") 'personal)
-     ((eq lsp-ltex-plus-save-additions-to 'globally-defined) 'personal)
+     ((equal marker "global") 'global)
+     ((eq lsp-ltex-plus-save-additions-to 'globally-defined) 'global)
      ((eq lsp-ltex-plus-save-additions-to 'per-project-when-specified) 'project)
      ;; `either-allowing-user-choice' with no marker: the suggestion was not
      ;; split (or arrived from elsewhere), so keep the conservative file.
-     (t 'personal))))
+     (t 'global))))
 
 (defun lsp-ltex-plus--save-addition (kind lang items command)
   "Add ITEMS for LANG to KIND's list, in the file COMMAND's target names.
-Writing to the personal file goes through the `-stored' mirror and
+Writing to the global file goes through the `-stored' mirror and
 rebuilds the merged views, exactly as before.  Writing to a project file
 updates the file and refreshes its cache entry, so the next check sees
 the new entry without waiting for a modification-time comparison."
@@ -1241,7 +1241,7 @@ the new entry without waiting for a modification-time comparison."
                        merged)
                  lsp-ltex-plus--project-file-cache))
     (lsp-ltex-plus--add-to-plist (lsp-ltex-plus--kind-get kind :stored)
-                                 (symbol-value (lsp-ltex-plus--kind-get kind :personal-file))
+                                 (symbol-value (lsp-ltex-plus--kind-get kind :global-file))
                                  lang items)
     (lsp-ltex-plus--recompute-merged)))
 
@@ -1257,7 +1257,7 @@ the new entry without waiting for a modification-time comparison."
 ;; The three handlers below differ only in which list they add to and which
 ;; key the server used to carry the entries, so they share one body.  Each
 ;; entry is routed by `lsp-ltex-plus--save-addition', which decides between
-;; the personal and the project file; ACTION is passed along because a
+;; the global and the project file; ACTION is passed along because a
 ;; suggestion split by `either-allowing-user-choice' carries the answer on
 ;; itself.
 
@@ -1494,7 +1494,7 @@ ambiguity.
 
 Each value comes from `lsp-ltex-plus--effective-plist', so a project that
 sets any of the `lsp-ltex-plus-project-*-file' settings has its own lists
-folded in on top of the personal ones."
+folded in on top of the global ones."
   (list :dictionary           (lsp-ltex-plus--obj-or-empty (lsp-ltex-plus--effective-plist 'dictionary))
         :disabledRules        (lsp-ltex-plus--obj-or-empty (lsp-ltex-plus--effective-plist 'disabled-rules))
         :enabledRules         (lsp-ltex-plus--obj-or-empty (lsp-ltex-plus--effective-plist 'enabled-rules))
