@@ -92,6 +92,19 @@
   :group 'lsp-mode
   :prefix "lsp-ltex-plus-")
 
+;; Directory-local safety, modelled on AUCTeX (and on Emacs core, which declares
+;; `fill-column' safe for an integer and `indent-tabs-mode' for a boolean).  The
+;; package vouches for a setting with `:safe' and a predicate rather than
+;; leaving every user to answer the same question in every project:
+;;
+;;   - Settings that can only change how text is checked are declared safe on a
+;;     type check alone.  The worst a `.dir-locals.el' can do with them is check
+;;     in the wrong language, or accept a word you did not choose.
+;;   - Settings naming a file this package *writes* are held to more than a type
+;;     check: see `lsp-ltex-plus--project-file-safe-p', which follows AUCTeX's
+;;     `TeX--output-dir-safe-p' in accepting only a name that cannot lead
+;;     outside the tree its `.dir-locals.el' governs.
+
 (defcustom lsp-ltex-plus-ls-plus-executable "ltex-ls-plus"
   "The name or path of the ltex-ls-plus executable."
   :type 'string
@@ -143,6 +156,7 @@ regex tables.  The common effect is to minimise false positives from
 commented-out code.  Python comments are parsed as reStructuredText;
 all others are parsed as Markdown."
   :type 'boolean
+  :safe #'booleanp
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-show-progress t
@@ -232,7 +246,21 @@ When using the language code \"auto\", LTeX+ will try to detect the language of
 the document.  This is not recommended, as only generic languages like \"en\" or
 \"de\" will be detected and thus no spelling errors might be reported."
   :type 'string
+  :safe #'stringp
   :group 'lsp-ltex-plus)
+
+(defun lsp-ltex-plus--language-plist-p (value)
+  "Non-nil when VALUE is a language-keyed plist of vectors of strings.
+The shape the four language-keyed settings take, e.g.
+\\='(:en-US [\"foo\"] :de-DE [\"bar\"]).  Used as the `:safe' predicate for
+those settings: a value of this shape only ever adds words or rule
+names to a check, so a project may set one without confirmation."
+  (and (listp value)
+       (cl-evenp (length value))
+       (cl-loop for (key val) on value by #'cddr
+                always (and (keywordp key)
+                            (vectorp val)
+                            (seq-every-p #'stringp val)))))
 
 (defcustom lsp-ltex-plus-dictionary nil
   "Additional words accepted as correctly spelled, per language.
@@ -247,6 +275,7 @@ lists, prefer editing the on-disk file (see the External settings
 section in the README) rather than stuffing everything into this
 variable."
   :type 'plist
+  :safe #'lsp-ltex-plus--language-plist-p
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-enabled-rules nil
@@ -255,6 +284,7 @@ This setting is language-specific, so use an object of the format
 \\='(:en-US [\"RULE1\" \"RULE2\"] :de-DE [\"RULE1\" ...]) where the key is
 the language code and the value is a vector of rule IDs."
   :type 'plist
+  :safe #'lsp-ltex-plus--language-plist-p
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-disabled-rules nil
@@ -263,6 +293,7 @@ This setting is language-specific, so use an object of the format
 \\='(:en-US [\"RULE1\" \"RULE2\"] :de-DE [\"RULE1\" ...]) where the key is
 the language code and the value is a vector of rule IDs."
   :type 'plist
+  :safe #'lsp-ltex-plus--language-plist-p
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-hidden-false-positives nil
@@ -279,6 +310,7 @@ separate and merged on the fly for the server.  See the LTeX+
 documentation for the feature:
 https://ltex-plus.github.io/ltex-plus/advanced-usage.html#hiding-false-positives-with-regular-expressions"
   :type 'plist
+  :safe #'lsp-ltex-plus--language-plist-p
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-bibtex-fields nil
@@ -321,6 +353,7 @@ actions as values (\"default\", \"ignore\", \"dummy\", \"pluralDummy\",
 These are disabled by default, e.g., rules about passive voice, sentence length,
 etc., at the cost of more false positives."
   :type 'boolean
+  :safe #'booleanp
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-additional-rules-mother-tongue nil
@@ -328,6 +361,7 @@ etc., at the cost of more false positives."
 If set, additional rules will be checked to detect false friends. Picky rules
 may need to be enabled in order to see an effect.  nil means unset."
   :type '(choice (const :tag "Unset" nil) (string :tag "Language code"))
+  :safe #'string-or-null-p
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-additional-rules-language-model nil
@@ -453,6 +487,7 @@ positive value restores LanguageTool's own caching instead."
   "Severity of the diagnostics corresponding to the grammar and spelling errors.
 Possible severities are \"error\", \"warning\", \"information\", and \"hint\"."
   :type '(choice (const "error") (const "warning") (const "information") (const "hint"))
+  :safe #'stringp
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-check-frequency "edit"
@@ -461,6 +496,7 @@ Possible severities are \"error\", \"warning\", \"information\", and \"hint\"."
 - \"save\": checked when opened or saved.
 - \"manual\": use commands to manually trigger checks."
   :type '(choice (const "edit") (const "save") (const "manual"))
+  :safe #'stringp
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-clear-diagnostics-when-closing-file t
@@ -601,6 +637,15 @@ Custom-defined false positives are stored in
 `lsp-ltex-plus-hidden-false-positives', while on-disk-defined ones are
 stored in `lsp-ltex-plus--hidden-false-positives-stored'.  Read by the
 server; recomputed whenever either source changes.")
+
+(defvar lsp-ltex-plus--project-file-cache (make-hash-table :test #'equal)
+  "Cache of project settings files: absolute path -> (MTIME . PLIST).
+The server pulls settings on every check, so the files behind that pull
+are read only when their modification time has moved.  MTIME is nil for
+a file that does not exist, which is itself cached — creating the file
+later moves the time off nil and the entry is refreshed.  Filled and
+consulted by `lsp-ltex-plus--load-project-plist'; see the
+`lsp-ltex-plus-project-*-file' settings.")
 
 (defvar lsp-ltex-plus--server-name nil
   "Name the connected ltex-ls-plus reported via `serverInfo', or nil.
@@ -761,6 +806,10 @@ themselves are never mutated."
         (lsp-ltex-plus--load-plist lsp-ltex-plus-disabled-rules-file))
   (setq lsp-ltex-plus--hidden-false-positives-stored
         (lsp-ltex-plus--load-plist lsp-ltex-plus-hidden-false-positives-file))
+  ;; Project files carry their own modification-time check, so this only
+  ;; matters for an edit that left the time untouched — but a reload is
+  ;; meant to be the blunt instrument that always works.
+  (clrhash lsp-ltex-plus--project-file-cache)
   (lsp-ltex-plus--recompute-merged))
 
 (defun lsp-ltex-plus--recompute-merged ()
@@ -814,10 +863,16 @@ Two steps run together:
      the `lsp-ltex-plus/' subdirectory of `user-emacs-directory'
      and rebuild the merged views
      (each merged view combines a file's contents with its
-     corresponding user defcustom).
+     corresponding user defcustom), and drop the cache of any
+     project settings files (see the `lsp-ltex-plus-project-*-file'
+     settings).
   2. Send `workspace/didChangeConfiguration' to every running
      ltex-ls-plus workspace so the new state takes effect on the
      next check, with no server restart.
+
+Project files are noticed on their own when their modification time
+moves, so this is only needed for them if one was changed in a way that
+left the time untouched.
 
 Use this whenever you change anything that the server reads —
 either by editing one of the on-disk files by hand (bulk-adding
@@ -836,6 +891,139 @@ change applied without reloading."
   #'lsp-ltex-plus-reload-and-notify-server
   "0.3.1"
   "Renamed to better describe what the function does (reload + push to server).")
+
+;;;; -- Project-local settings -------------------------------------------------
+
+;; A project can keep its own word list and rule lists beside the personal ones
+;; under `user-emacs-directory'.  The four variables below mirror the personal
+;; `lsp-ltex-plus-*-file' ones and are normally set from a project's
+;; `.dir-locals.el'; each names a file whose contents are merged with the
+;; corresponding personal list for documents in that project.  Neither side
+;; shadows the other: a word present in either list is accepted, so a project
+;; adds its jargon on top of the vocabulary you carry everywhere.  Each is
+;; independent, so a project can bring its own dictionary while still using
+;; your personal rule lists.
+;;
+;; The project boundary is Emacs' own.  `.dir-locals.el' already decides which
+;; files a setting governs, and the per-document handlers answer each pull from
+;; the buffer the server named, so a document is checked against exactly the
+;; lists that apply to it.  Nothing here needs a notion of "project root".
+;;
+;; Buffers with no file — `*scratch*', comint input — have no directory-local
+;; variables and therefore no project files, so they see the personal lists
+;; alone.  That is the right answer: they belong to no project.
+
+(defun lsp-ltex-plus--project-file-safe-p (value)
+  "Non-nil when VALUE is safe as a directory-local project settings file.
+Safe means nil, or a relative name with no `..' component — one that
+cannot reach outside the tree its `.dir-locals.el' governs.  This package
+creates and writes these files, so a name that could escape that tree is
+left for the user to confirm in the usual way.  Modelled on AUCTeX's
+`TeX--output-dir-safe-p', which applies the same rule to `TeX-output-dir'
+for the same reason."
+  (or (null value)
+      (and (stringp value)
+           (not (file-name-absolute-p value))
+           (not (member ".." (split-string value "/" t))))))
+
+(defmacro lsp-ltex-plus--define-project-file (name file description)
+  "Define NAME as the project counterpart of a personal settings file.
+FILE is the suggested basename shown in the docstring and DESCRIPTION
+names what the file holds."
+  `(defcustom ,name nil
+     ,(format "File holding this project's %s, or nil for none.
+
+Set this from a project's `.dir-locals.el' to give the project its own
+list, merged with — never replacing — the personal one:
+
+  ((nil . ((%s
+            . \"%s\"))))
+
+A relative name is resolved against the directory holding the
+`.dir-locals.el' that set it, so every file in the project agrees on one
+location however deep it sits, and moving the project moves the setting
+with it.  An absolute name (or one starting with `~') is used as given,
+but is not treated as safe: Emacs will ask before applying it.
+
+The format is the same plist the personal files use — language codes as
+keyword keys, vectors of strings as values, e.g.
+
+  (:en-US [\"Wittgenstein\"] :de-DE [\"Widerspiegelung\"])"
+              description name file)
+     :type '(choice (const :tag "None" nil) file)
+     :safe #'lsp-ltex-plus--project-file-safe-p
+     :group 'lsp-ltex-plus))
+
+(lsp-ltex-plus--define-project-file lsp-ltex-plus-project-dictionary-file
+                                    ".ltex/dictionary.eld"
+                                    "additional accepted words")
+(lsp-ltex-plus--define-project-file lsp-ltex-plus-project-enabled-rules-file
+                                    ".ltex/enabled-rules.eld"
+                                    "rules to enable")
+(lsp-ltex-plus--define-project-file lsp-ltex-plus-project-disabled-rules-file
+                                    ".ltex/disabled-rules.eld"
+                                    "rules to disable")
+(lsp-ltex-plus--define-project-file lsp-ltex-plus-project-hidden-false-positives-file
+                                    ".ltex/hidden-false-positives.eld"
+                                    "false positives to hide")
+
+(defconst lsp-ltex-plus--setting-kinds
+  '((dictionary             lsp-ltex-plus--dictionary-merged
+                            lsp-ltex-plus-project-dictionary-file)
+    (enabled-rules          lsp-ltex-plus--enabled-rules-merged
+                            lsp-ltex-plus-project-enabled-rules-file)
+    (disabled-rules         lsp-ltex-plus--disabled-rules-merged
+                            lsp-ltex-plus-project-disabled-rules-file)
+    (hidden-false-positives lsp-ltex-plus--hidden-false-positives-merged
+                            lsp-ltex-plus-project-hidden-false-positives-file))
+  "The four language-keyed settings, by kind.
+Each entry is (KIND PERSONAL-VARIABLE PROJECT-FILE-VARIABLE): the
+variable holding the personal merged value, and the variable naming the
+file a project may add to extend it.")
+
+(defun lsp-ltex-plus--dir-locals-directory ()
+  "Return the directory whose `.dir-locals.el' governs the current buffer.
+Falls back to `default-directory' when the buffer has no file or no
+directory-local variables apply, which is the sensible base for a value
+that was set globally rather than per project."
+  (or (when-let* ((file (buffer-file-name))
+                  (found (dir-locals-find-file file)))
+        ;; `dir-locals-find-file' answers with the directory itself, or with
+        ;; (DIR CLASS MTIME) when the entry is already cached.
+        (file-name-as-directory (if (consp found) (car found) found)))
+      default-directory))
+
+(defun lsp-ltex-plus--project-file (variable)
+  "Return the absolute path VARIABLE names for the current buffer, or nil.
+VARIABLE is one of the `lsp-ltex-plus-project-*-file' settings; a
+relative value resolves against the directory holding the
+`.dir-locals.el' that set it."
+  (when-let* ((value (symbol-value variable)))
+    (expand-file-name value (lsp-ltex-plus--dir-locals-directory))))
+
+(defun lsp-ltex-plus--load-project-plist (path)
+  "Return the plist stored at PATH, re-reading it only when it has changed."
+  (let ((mtime (file-attribute-modification-time (file-attributes path)))
+        (entry (gethash path lsp-ltex-plus--project-file-cache)))
+    (if (and entry (equal (car entry) mtime))
+        (cdr entry)
+      (let ((plist (and mtime (lsp-ltex-plus--load-plist path))))
+        (puthash path (cons mtime plist) lsp-ltex-plus--project-file-cache)
+        plist))))
+
+(defun lsp-ltex-plus--effective-plist (kind)
+  "Return KIND as the server should see it for the document in this buffer.
+The personal value — the user's defcustom merged with the file under
+`user-emacs-directory' — extended with this project's file, if it has
+one.  KIND is a key of `lsp-ltex-plus--setting-kinds'."
+  (let* ((entry (alist-get kind lsp-ltex-plus--setting-kinds))
+         (personal (symbol-value (nth 0 entry)))
+         (file (lsp-ltex-plus--project-file (nth 1 entry))))
+    (if file
+        (lsp-ltex-plus--merge-plists
+         personal
+         (lsp-ltex-plus--load-project-plist file))
+      personal)))
 
 ;;;; -- Action Handlers --------------------------------------------------------
 
@@ -987,13 +1175,13 @@ substitutes the shared empty hash-table for nil so `json-serialize' emits
 `{}' rather than `null'; see that helper's docstring for the underlying
 ambiguity.
 
-The values are still the global merged ones: this function is the single
-place a project-specific word list has to enter, and reading them here
-rather than at the call site is what makes that a local change."
-  (list :dictionary           (lsp-ltex-plus--obj-or-empty lsp-ltex-plus--dictionary-merged)
-        :disabledRules        (lsp-ltex-plus--obj-or-empty lsp-ltex-plus--disabled-rules-merged)
-        :enabledRules         (lsp-ltex-plus--obj-or-empty lsp-ltex-plus--enabled-rules-merged)
-        :hiddenFalsePositives (lsp-ltex-plus--obj-or-empty lsp-ltex-plus--hidden-false-positives-merged)))
+Each value comes from `lsp-ltex-plus--effective-plist', so a project that
+sets any of the `lsp-ltex-plus-project-*-file' settings has its own lists
+folded in on top of the personal ones."
+  (list :dictionary           (lsp-ltex-plus--obj-or-empty (lsp-ltex-plus--effective-plist 'dictionary))
+        :disabledRules        (lsp-ltex-plus--obj-or-empty (lsp-ltex-plus--effective-plist 'disabled-rules))
+        :enabledRules         (lsp-ltex-plus--obj-or-empty (lsp-ltex-plus--effective-plist 'enabled-rules))
+        :hiddenFalsePositives (lsp-ltex-plus--obj-or-empty (lsp-ltex-plus--effective-plist 'hidden-false-positives))))
 
 (defun lsp-ltex-plus--request-workspace-specific-configuration (workspace params)
   "Handle the custom `ltex/workspaceSpecificConfiguration' request.
@@ -1687,10 +1875,12 @@ variable nil."
   (lsp-register-custom-settings
    `(("ltex.enabled"                             ,(lambda () (vconcat (lsp-ltex-plus--enabled-languages))))
      ("ltex.language"                            lsp-ltex-plus-language)
-     ("ltex.dictionary"                          ,(lambda () (lsp-ltex-plus--obj-or-empty lsp-ltex-plus--dictionary-merged)))
-     ("ltex.enabledRules"                        ,(lambda () (lsp-ltex-plus--obj-or-empty lsp-ltex-plus--enabled-rules-merged)))
-     ("ltex.disabledRules"                       ,(lambda () (lsp-ltex-plus--obj-or-empty lsp-ltex-plus--disabled-rules-merged)))
-     ("ltex.hiddenFalsePositives"                ,(lambda () (lsp-ltex-plus--obj-or-empty lsp-ltex-plus--hidden-false-positives-merged)))
+     ;; These four are read per document, like the custom request's copies of
+     ;; them, so the two replies never disagree about a project's lists.
+     ("ltex.dictionary"                          ,(lambda () (lsp-ltex-plus--obj-or-empty (lsp-ltex-plus--effective-plist 'dictionary))))
+     ("ltex.enabledRules"                        ,(lambda () (lsp-ltex-plus--obj-or-empty (lsp-ltex-plus--effective-plist 'enabled-rules))))
+     ("ltex.disabledRules"                       ,(lambda () (lsp-ltex-plus--obj-or-empty (lsp-ltex-plus--effective-plist 'disabled-rules))))
+     ("ltex.hiddenFalsePositives"                ,(lambda () (lsp-ltex-plus--obj-or-empty (lsp-ltex-plus--effective-plist 'hidden-false-positives))))
      ("ltex.bibtex.fields"                       ,(lambda () (lsp-ltex-plus--obj-or-empty lsp-ltex-plus-bibtex-fields)))
      ("ltex.latex.commands"                      ,(lambda () (lsp-ltex-plus--obj-or-empty lsp-ltex-plus-latex-commands)))
      ("ltex.latex.environments"                  ,(lambda () (lsp-ltex-plus--obj-or-empty lsp-ltex-plus-latex-environments)))
