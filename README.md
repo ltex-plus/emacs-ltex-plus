@@ -315,7 +315,7 @@ For the full list of available settings, see [Customization](#customization).
 Once active, LTeX+ works just like any other LSP server:
 
 - **Diagnostics:** Errors and warnings will be highlighted in your buffer.
-- **Code Actions:** Use your standard `lsp-execute-code-action` (usually `s-l a` or `C-c l a`) to:
+- **Suggestions:** Use your standard `lsp-execute-code-action` (usually `s-l a` or `C-c l a`) to:
     - Add a word to your global dictionary.
     - Disable a specific rule you don't like.
     - Ignore a false positive.
@@ -342,7 +342,7 @@ lsp-mode's machinery is built around `file://` URIs, so historically only buffer
 (setq lsp-ltex-plus-check-fileless-buffers nil)
 ```
 
-While enabled (i.e., with the recommended default), a file-less buffer whose major mode is in the enabled set is checked just like a file buffer, and all such buffers share a single `ltex-ls-plus` process. Nothing is ever written to disk. Checking, code actions, and diagnostics behave exactly as they do for real files.
+While enabled (i.e., with the recommended default), a file-less buffer whose major mode is in the enabled set is checked just like a file buffer, and all such buffers share a single `ltex-ls-plus` process. Nothing is ever written to disk. Checking, suggestions, and diagnostics behave exactly as they do for real files.
 
 A few details worth knowing:
 
@@ -457,13 +457,13 @@ An empty space means the parameter has no direct counterpart at that layer: typi
 
 ### External settings
 
-Alongside the in-Emacs parameters above, `lsp-ltex-plus` relies on four pieces of **persistent configuration** on disk, which survive across Emacs sessions. Each of them has a defcustom counterpart so you can seed it declaratively from `:custom`. Three of the four (all except `enabled-rules`) also grow at runtime when you invoke a code action on a flagged diagnostic (`lsp-execute-code-action`, usually `s-l a` or `C-c l a`) — *Add to dictionary*, *Disable rule …*, or *Hide false positive …*.
+Alongside the in-Emacs parameters above, `lsp-ltex-plus` relies on four pieces of **persistent configuration** on disk, which survive across Emacs sessions. Each of them has a defcustom counterpart so you can seed it declaratively from `:custom`. Three of the four (all except `enabled-rules`) also grow at runtime when you accept a suggestion on a flagged diagnostic (`lsp-execute-code-action`, usually `s-l a` or `C-c l a`) — *Add to dictionary*, *Disable rule …*, or *Hide false positive …*.
 
 Each file is a per-language plist under `~/.emacs.d/lsp-ltex-plus/`, with language keys (`:en-US`, `:de-DE`, …) mapped to vectors of strings. Settings provided via `:custom` and via the file are kept separate: the defcustom settings are never mutated, and they are never written to disk. The server sees their merge.
 
-Code actions update the relevant file and notify the server, so the change takes effect on the next check without a restart. Which file they update depends on `lsp-ltex-plus-save-additions-to` once a project keeps lists of its own — see [Project-local settings](#project-local-settings) below.
+Accepting a suggestion updates the relevant file and notifies the server, so the change takes effect on the next check without a restart. Which file they update depends on `lsp-ltex-plus-save-additions-to` once a project keeps lists of its own — see [Project-local settings](#project-local-settings) below.
 
-| File (under `~/.emacs.d/lsp-ltex-plus/`) | `:custom` variable (defcustom) | Written by code action? | Provenance |
+| File (under `~/.emacs.d/lsp-ltex-plus/`) | `:custom` variable (defcustom) | Written by a suggestion? | Provenance |
 | :--- | :--- | :---: | :---: |
 | `stored-dictionary.eld` | `lsp-ltex-plus-dictionary` | yes | **LTeX+ only** |
 | `enabled-rules.eld` | `lsp-ltex-plus-enabled-rules` | no | LanguageTool |
@@ -504,15 +504,15 @@ Hand-editing the file is supported; afterwards run `M-x lsp-ltex-plus-reload-and
 
 #### What each one is for
 
-**Dictionary** — a per-language list of additional words that should be accepted as correctly spelled. Grown at runtime by the *Add to dictionary* code action, and "seedable" from `:custom`. For large hand-curated word lists, prefer editing the on-disk file directly (see [Inspecting and editing](#inspecting-and-editing) below) rather than stuffing everything into `:custom`.
+**Dictionary** — a per-language list of additional words that should be accepted as correctly spelled. Grown at runtime by the *Add to dictionary* suggestion, and "seedable" from `:custom`. For large hand-curated word lists, prefer editing the on-disk file directly (see [Inspecting and editing](#inspecting-and-editing) below) rather than stuffing everything into `:custom`.
 
 The dictionary is an **LTeX+ feature**, not a LanguageTool one. The `/check` HTTP endpoint exposed by LanguageTool has no `dictionary` parameter, and the personal-dictionary APIs offered to LanguageTool Premium subscribers live on a separate set of endpoints that `ltex-ls-plus` does not use. Instead, LTeX+ applies the dictionary locally. This means the following: For LanguageTool's rules pertaining to orthography errors (`MORFOLOGIK_RULE_*`, `HUNSPELL_*` and, for LT premium users, `*ORTHOGRAPHY*`), LTeX+ checks whether the listed words occur in the user's dictionary, and if so, it prevents the resulting diagnostics from being sent on to Emacs. This works identically for both the embedded local LanguageTool and the remote `lsp-ltex-plus-lt-server-uri`, since the dictionary filter runs in the LTeX+ server `ltex-ls-plus` either way.
 
 **Enabled / disabled rules** — the **coarsest-grained** control you have over what LanguageTool checks. A rule (e.g. `OXFORD_SPELLING_NOUNS`, `UPPERCASE_SENTENCE_START`, `EN_QUOTES`) either fires for every match in every document of that language, or it doesn't. Disabling a rule turns it off globally for its language; enabling a rule re-activates one that would otherwise be off (e.g. a *picky* rule, or a rule a user-level config previously disabled). These are **LanguageTool-level** settings — both the locally-embedded LanguageTool inside `ltex-ls-plus` and the hosted [LanguageTool HTTP API](https://languagetoolplus.com/http-api/) honour them (via the `enabledRules` / `disabledRules` query parameters). LTeX+ just exposes them per-language.
 
-`disabled-rules` also grows at runtime via the *Disable rule* code action; `enabled-rules` has no such writer (there is no "Enable rule" action for a flagged diagnostic) and is populated strictly from your `:custom` value and/or hand-edits to the file.
+`disabled-rules` also grows at runtime via the *Disable rule* suggestion; `enabled-rules` has no such writer (there is no "Enable rule" suggestion for a flagged diagnostic) and is populated strictly from your `:custom` value and/or hand-edits to the file.
 
-**Hidden false positives** — the **finest-grained** control, and a feature unique to LTeX+ ([documented here](https://ltex-plus.github.io/ltex-plus/advanced-usage.html#hiding-false-positives-with-regular-expressions)). Each entry pairs a rule ID with a regular expression matched against the diagnostic's surrounding text. Matches are directly suppressed inside `ltex-ls-plus`, before diagnostics reach Emacs. This fine-grained control allows the user to specifically hide false positives, without entirely turning the specific rule off. So, only the specific phrasing you marked as correct stops being flagged, and the same rule keeps catching real problems elsewhere in your prose. This lives entirely outside LanguageTool's own API and has no counterpart in hosted LanguageTool. The plist `hidden-false-positives` grows at runtime via the *Hide false positive* code action; it can also be populated from `:custom` with false-positive patterns you always want suppressed.
+**Hidden false positives** — the **finest-grained** control, and a feature unique to LTeX+ ([documented here](https://ltex-plus.github.io/ltex-plus/advanced-usage.html#hiding-false-positives-with-regular-expressions)). Each entry pairs a rule ID with a regular expression matched against the diagnostic's surrounding text. Matches are directly suppressed inside `ltex-ls-plus`, before diagnostics reach Emacs. This fine-grained control allows the user to specifically hide false positives, without entirely turning the specific rule off. So, only the specific phrasing you marked as correct stops being flagged, and the same rule keeps catching real problems elsewhere in your prose. This lives entirely outside LanguageTool's own API and has no counterpart in hosted LanguageTool. The plist `hidden-false-positives` grows at runtime via the *Hide false positive* suggestion; it can also be populated from `:custom` with false-positive patterns you always want suppressed.
 
 #### Rules vs. hidden false positives — which should I use?
 
