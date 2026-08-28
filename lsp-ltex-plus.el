@@ -108,10 +108,22 @@
 ;;     asks before a repository you cloned can set them.  Do not "complete"
 ;;     the set by adding `:safe' to them:
 ;;
-;;       `lsp-ltex-plus-lt-username', `lsp-ltex-plus-lt-api-key'
-;;           are credentials; a project has no business setting them quietly.
 ;;       `lsp-ltex-plus-additional-rules-language-model'
-;;           is an arbitrary directory the server reads from.
+;;           names a directory whose n-gram data the server parses.  A
+;;           repository can ship such a directory and point at it with a
+;;           relative path, which feeds attacker-chosen binary data to a
+;;           parser -- the one residual threat here, as opposed to a merely
+;;           surprising configuration.  Note the usual value is an absolute
+;;           path to a large data set kept outside any project, so requiring
+;;           confirmation costs almost nobody anything.
+;;
+;;     The LanguageTool credentials (`lsp-ltex-plus-lt-username',
+;;     `lsp-ltex-plus-lt-api-key') are NOT in this list, deliberately.  A
+;;     `.dir-locals.el' can only set a variable, never read one, so a
+;;     repository cannot learn your key this way; the most it can do is
+;;     substitute its own, which is visible in its own `.dir-locals.el' and
+;;     is a matter of using the tool responsibly rather than a threat.
+;;     Setting them per project is a legitimate thing to want.
 ;;
 ;;     `lsp-ltex-plus-lt-server-uri' is the middle case: it names the host
 ;;     every document you edit is sent to, so it is vouched for by an
@@ -452,12 +464,14 @@ but any other host goes through Emacs' usual confirmation; see
   "Username/email as used to log in at languagetool.org for Premium API access.
 Only relevant if `lsp-ltex-plus-lt-server-uri' is set.  nil means unset."
   :type '(choice (const :tag "Unset" nil) (string :tag "Username/email"))
+  :safe #'string-or-null-p
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-lt-api-key nil
   "API key for Premium API access.
 Only relevant if `lsp-ltex-plus-lt-server-uri' is set.  nil means unset."
   :type '(choice (const :tag "Unset" nil) (string :tag "API key"))
+  :safe #'string-or-null-p
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-ltex-ls-path nil
