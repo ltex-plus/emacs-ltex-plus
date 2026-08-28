@@ -104,6 +104,22 @@
 ;;     check: see `lsp-ltex-plus--project-file-safe-p', which follows AUCTeX's
 ;;     `TeX--output-dir-safe-p' in accepting only a name that cannot lead
 ;;     outside the tree its `.dir-locals.el' governs.
+;;   - Four live settings are deliberately left unvouched for, so that Emacs
+;;     asks before a repository you cloned can set them.  Do not "complete"
+;;     the set by adding `:safe' to them:
+;;
+;;       `lsp-ltex-plus-lt-server-uri'  names the host every document you edit
+;;           is sent to for checking.  A silent project-local value would be an
+;;           exfiltration channel, not a preference.
+;;       `lsp-ltex-plus-lt-username', `lsp-ltex-plus-lt-api-key'
+;;           are credentials; a project has no business setting them quietly.
+;;       `lsp-ltex-plus-additional-rules-language-model'
+;;           is an arbitrary directory the server reads from.
+;;
+;;     Settings read only at server start or at client setup carry no `:safe'
+;;     either — not because they are dangerous, but because a project-local
+;;     value would silently do nothing, and vouching for it would imply
+;;     otherwise.
 
 (defcustom lsp-ltex-plus-ls-plus-executable "ltex-ls-plus"
   "The name or path of the ltex-ls-plus executable."
@@ -249,6 +265,20 @@ the document.  This is not recommended, as only generic languages like \"en\" or
   :safe #'stringp
   :group 'lsp-ltex-plus)
 
+(defun lsp-ltex-plus--symbol-keyed-alist-p (value)
+  "Non-nil when VALUE is an alist of symbol keys with string or boolean values.
+The shape the parser tables take — `lsp-ltex-plus-bibtex-fields',
+`-latex-commands', `-latex-environments', `-markdown-nodes'.  Used as
+their `:safe' predicate: such a value only changes how a document is
+parsed before it is checked, so a project may set one without asking."
+  (and (listp value)
+       (seq-every-p (lambda (cell)
+                      (and (consp cell)
+                           (symbolp (car cell))
+                           (or (stringp (cdr cell))
+                               (memq (cdr cell) '(t nil)))))
+                    value)))
+
 (defun lsp-ltex-plus--language-plist-p (value)
   "Non-nil when VALUE is a language-keyed plist of vectors of strings.
 The shape the four language-keyed settings take, e.g.
@@ -320,6 +350,7 @@ where true means that the field value should be checked and false means that
 the field value should be ignored.  Field names are listed as symbols
 (e.g., `title')."
   :type 'alist
+  :safe #'lsp-ltex-plus--symbol-keyed-alist-p
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-latex-commands nil
@@ -330,6 +361,7 @@ actions as values (\"default\", \"ignore\", \"dummy\", \"pluralDummy\",
 arguments and the initial backslash doubled, e.g. `\\\\ref{}',
 `\\\\documentclass[]{}'."
   :type 'alist
+  :safe #'lsp-ltex-plus--symbol-keyed-alist-p
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-latex-environments nil
@@ -338,6 +370,7 @@ This setting is an object with the environment names as keys and corresponding
 actions as values (\"default\", \"ignore\").  Environment names are listed as
 symbols (e.g., `lstlisting')."
   :type 'alist
+  :safe #'lsp-ltex-plus--symbol-keyed-alist-p
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-markdown-nodes nil
@@ -346,6 +379,7 @@ This setting is an object with the node types as keys and corresponding
 actions as values (\"default\", \"ignore\", \"dummy\", \"pluralDummy\",
 \"vowelDummy\").  Node types are listed as symbols (e.g., `CodeBlock')."
   :type 'alist
+  :safe #'lsp-ltex-plus--symbol-keyed-alist-p
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-additional-rules-enable-picky-rules nil
@@ -452,6 +486,7 @@ remote LanguageTool service.  If you use a local server
 consider raising it to 60000.  This does not affect caching granularity,
 which is always per paragraph."
   :type 'integer
+  :safe #'integerp
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-paragraph-cache-ttl-minutes 30
@@ -462,6 +497,7 @@ actively editing stay warm; a document left untouched for longer than
 this is dropped from the cache.  A document's cache is also cleared as
 soon as the file is closed."
   :type 'integer
+  :safe #'integerp
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-paragraph-cache-enabled t
@@ -476,11 +512,13 @@ sliced paragraphs are just never stored or served from the cache.
 Disabling this and setting `lsp-ltex-plus-sentence-cache-size' to a
 positive value restores LanguageTool's own caching instead."
   :type 'boolean
+  :safe #'booleanp
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-completion-enabled nil
   "Controls whether completion is enabled (IntelliSense)."
   :type 'boolean
+  :safe #'booleanp
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-diagnostic-severity "warning"
@@ -502,6 +540,7 @@ Possible severities are \"error\", \"warning\", \"information\", and \"hint\"."
 (defcustom lsp-ltex-plus-clear-diagnostics-when-closing-file t
   "If set to true, diagnostics of a file are cleared when the file is closed."
   :type 'boolean
+  :safe #'booleanp
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-check-fileless-buffers t
@@ -517,6 +556,7 @@ file-less buffer in a programming mode (such as *scratch*, which uses
 checks are also enabled, but an explicit \\[lsp-ltex-plus-mode] always
 works."
   :type 'boolean
+  :safe #'booleanp
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-check-comint-input t
@@ -532,6 +572,7 @@ file), but additionally restricts the checked document to the input
 region via `lsp-mode''s virtual-buffer support.  See
 `lsp-ltex-plus--setup-comint-buffer'."
   :type 'boolean
+  :safe #'booleanp
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-apply-kind-first-patch nil
