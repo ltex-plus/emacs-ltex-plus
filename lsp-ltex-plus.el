@@ -1165,54 +1165,109 @@ the new entry without waiting for a modification-time comparison."
 ;; right accessor for the active representation and normalise the key to a
 ;; string.
 
-(defun lsp-ltex-plus--action-add-to-dictionary (action)
-  "Process the _ltex.addToDictionary ACTION from the server."
-  (lsp-ltex-plus--log "Action: addToDictionary")
+;; The three handlers below differ only in which list they add to and which
+;; key the server used to carry the entries, so they share one body.  Each
+;; entry is routed by `lsp-ltex-plus--save-addition', which decides between
+;; the personal and the project file; ACTION is passed along because a
+;; suggestion split by `either-allowing-user-choice' carries the answer on
+;; itself.
+
+(defun lsp-ltex-plus--handle-addition-action (action kind argument-key label)
+  "Add the entries ACTION carries under ARGUMENT-KEY to KIND's list.
+LABEL names the action in log and error messages."
+  (lsp-ltex-plus--log "Action: %s (saving to the %s file)"
+                      label (lsp-ltex-plus--addition-target kind action))
   (let* ((args (lsp-get action :arguments))
          (arg0 (and (vectorp args) (aref args 0)))
-         (words-by-lang (and arg0 (lsp-get arg0 :words))))
-    (if (null words-by-lang)
-        (message "[lsp-ltex-plus] addToDictionary: Malformed arguments %S" args)
-      (lsp-map (lambda (lang words-arr)
-                 (lsp-ltex-plus--add-to-plist 'lsp-ltex-plus--dictionary-stored
-                                              lsp-ltex-plus-dictionary-file
-                                              lang (append words-arr nil)))
-               words-by-lang)
-      (lsp-ltex-plus--recompute-merged)))
+         (entries-by-lang (and arg0 (lsp-get arg0 argument-key))))
+    (if (null entries-by-lang)
+        (message "[lsp-ltex-plus] %s: Malformed arguments %S" label args)
+      (lsp-map (lambda (lang entries)
+                 (lsp-ltex-plus--save-addition kind lang (append entries nil) action))
+               entries-by-lang)))
   ;; Notify server of config change so it re-fetches settings.
   (lsp-notify "workspace/didChangeConfiguration" '(:settings nil)))
 
+(defun lsp-ltex-plus--action-add-to-dictionary (action)
+  "Process the _ltex.addToDictionary ACTION from the server."
+  (lsp-ltex-plus--handle-addition-action action 'dictionary :words "addToDictionary"))
+
 (defun lsp-ltex-plus--action-disable-rules (action)
   "Process the _ltex.disableRules ACTION."
-  (lsp-ltex-plus--log "Action: disableRules")
-  (let* ((args (lsp-get action :arguments))
-         (arg0 (and (vectorp args) (aref args 0)))
-         (rules-by-lang (and arg0 (lsp-get arg0 :ruleIds))))
-    (if (null rules-by-lang)
-        (message "[lsp-ltex-plus] disableRules: Malformed arguments %S" args)
-      (lsp-map (lambda (lang rules-arr)
-                 (lsp-ltex-plus--add-to-plist 'lsp-ltex-plus--disabled-rules-stored
-                                              lsp-ltex-plus-disabled-rules-file
-                                              lang (append rules-arr nil)))
-               rules-by-lang)
-      (lsp-ltex-plus--recompute-merged)))
-  (lsp-notify "workspace/didChangeConfiguration" '(:settings nil)))
+  (lsp-ltex-plus--handle-addition-action action 'disabled-rules :ruleIds "disableRules"))
 
 (defun lsp-ltex-plus--action-hide-false-positives (action)
   "Process the _ltex.hideFalsePositives ACTION."
-  (lsp-ltex-plus--log "Action: hideFalsePositives")
-  (let* ((args (lsp-get action :arguments))
-         (arg0 (and (vectorp args) (aref args 0)))
-         (fps-by-lang (and arg0 (lsp-get arg0 :falsePositives))))
-    (if (null fps-by-lang)
-        (message "[lsp-ltex-plus] hideFalsePositives: Malformed arguments %S" args)
-      (lsp-map (lambda (lang fps-arr)
-                 (lsp-ltex-plus--add-to-plist 'lsp-ltex-plus--hidden-false-positives-stored
-                                              lsp-ltex-plus-hidden-false-positives-file
-                                              lang (append fps-arr nil)))
-               fps-by-lang)
-      (lsp-ltex-plus--recompute-merged)))
-  (lsp-notify "workspace/didChangeConfiguration" '(:settings nil)))
+  (lsp-ltex-plus--handle-addition-action action 'hidden-false-positives
+                                         :falsePositives "hideFalsePositives"))
+
+;;;; -- Offering both destinations as separate suggestions ---------------------
+
+;; Under `either-allowing-user-choice', a suggestion that could be saved either
+;; way is shown twice — once saving everywhere, once saving to this project
+;; only — so the choice is made by picking a suggestion rather than by
+;; answering a question after picking one.  The two copies differ in their
+;; title and in a marker naming the file they save to; the handler reads that
+;; marker back.
+;;
+;; lsp-mode fetches suggestions in two independent places: the list you choose
+;; from, and the modeline indicator that counts them.  Both are advised, or the
+;; count would disagree with the menu.  Like the other global advice in this
+;; package, these are strict pass-throughs: an action this package does not own
+;; is returned untouched, whichever server produced it.
+
+(defun lsp-ltex-plus--suggestion-command (action)
+  "Return the command object of code ACTION, or nil when it carries none."
+  (let ((command (lsp-get action :command)))
+    (and (lsp-structure-p command) command)))
+
+(defun lsp-ltex-plus--suggestion-variant (action command target suffix)
+  "Return a copy of ACTION that saves to TARGET, its title marked by SUFFIX.
+TARGET is the string \"personal\" or \"project\"; COMMAND is ACTION's
+command object.  Both objects are copied before being changed, so the
+suggestion the server sent is left alone."
+  (let* ((tagged (lsp-put (lsp-copy command) lsp-ltex-plus--target-marker target))
+         (copy (lsp-copy action))
+         (copy (lsp-put copy :title (format "%s — %s" (lsp-get action :title) suffix))))
+    (lsp-put copy :command tagged)))
+
+(defun lsp-ltex-plus--split-suggestion (action)
+  "Return ACTION as a list of two suggestions, or nil to leave it alone.
+Splits only when the user asked to choose each time and this project
+actually keeps its own file for the kind of entry ACTION would add —
+otherwise there is nothing to choose between."
+  (when (eq lsp-ltex-plus-save-additions-to 'either-allowing-user-choice)
+    (when-let* ((command (lsp-ltex-plus--suggestion-command action))
+                (kind (lsp-ltex-plus--kind-for-command (lsp-get command :command))))
+      (when (lsp-ltex-plus--project-file-for kind)
+        (list (lsp-ltex-plus--suggestion-variant action command "personal" "everywhere")
+              (lsp-ltex-plus--suggestion-variant action command "project"
+                                                 "in this project only"))))))
+
+(defun lsp-ltex-plus--expand-suggestions (actions)
+  "Return ACTIONS with this package's suggestions split in two where asked.
+Anything else passes through untouched, and the sequence type is kept."
+  (let ((expanded (seq-mapcat (lambda (action)
+                                (or (lsp-ltex-plus--split-suggestion action)
+                                    (list action)))
+                              (append actions nil))))
+    (if (vectorp actions) (vconcat expanded) expanded)))
+
+(defun lsp-ltex-plus--expand-modeline-args (args)
+  "Split the suggestions in ARGS, the argument list of the modeline update."
+  (cons (lsp-ltex-plus--expand-suggestions (car args)) (cdr args)))
+
+(defun lsp-ltex-plus--install-suggestion-splitting ()
+  "Make both places lsp-mode collects suggestions see the split ones."
+  (advice-add 'lsp-code-actions-at-point :filter-return
+              #'lsp-ltex-plus--expand-suggestions)
+  ;; The modeline indicator issues its own request instead of going through
+  ;; the function above, so without this its count would say one where the
+  ;; menu offers two.  `lsp-modeline' may not be loaded yet; advice placed on
+  ;; a symbol before its function exists takes effect once it is defined, so
+  ;; there is nothing to wait for.
+  (advice-add 'lsp--modeline-update-code-actions :filter-args
+              #'lsp-ltex-plus--expand-modeline-args))
 
 ;;;; -- Custom Request Handlers ------------------------------------------------
 
@@ -1997,6 +2052,7 @@ variable nil."
     (lsp-ltex-plus--migrate-extensionless-file (car pair) (cdr pair)))
 
   (lsp-ltex-plus--load-external-settings)
+  (lsp-ltex-plus--install-suggestion-splitting)
 
   (lsp-ltex-plus--log "Registering settings and client...")
   (lsp-ltex-plus--log "Registering ltex-ls-plus client (priority: -1)...")
