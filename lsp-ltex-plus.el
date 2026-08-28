@@ -919,12 +919,25 @@ write) and at the end of `lsp-ltex-plus--load-external-settings'."
     (lsp-ltex-plus--save-plist merged file-path)))
 
 (defun lsp-ltex-plus-list-dictionary ()
-  "Print the merged dictionary currently in effect to the echo area.
-The value shown is `lsp-ltex-plus--dictionary-merged' — the union of
-the user-provided defcustom `lsp-ltex-plus-dictionary' and the
-on-disk `lsp-ltex-plus-dictionary-file'."
+  "Show the accepted words in force for the document in this buffer.
+
+That is what the server is actually told: the global list -- the
+defcustom `lsp-ltex-plus-dictionary\=' merged with the file
+`lsp-ltex-plus-dictionary-file\=' names -- and, in a project keeping a
+dictionary of its own, that project\='s words folded in on top.  The
+project file is named in the output, so a word you did not expect can be
+traced to the list it came from.
+
+Called where no project dictionary applies -- outside a project, or in a
+buffer with no file, such as `*scratch*\=' -- this is simply the global
+list."
   (interactive)
-  (message "[lsp-ltex-plus] Dictionary: %S" lsp-ltex-plus--dictionary-merged))
+  (let ((effective (lsp-ltex-plus--effective-plist 'dictionary))
+        (project-file (lsp-ltex-plus--project-file-for 'dictionary)))
+    (if project-file
+        (message "[lsp-ltex-plus] Dictionary (global + %s): %S"
+                 (abbreviate-file-name project-file) effective)
+      (message "[lsp-ltex-plus] Dictionary (global): %S" effective))))
 
 (defun lsp-ltex-plus--notify-ltex-workspaces ()
   "Send `workspace/didChangeConfiguration' to every ltex-ls-plus workspace.
