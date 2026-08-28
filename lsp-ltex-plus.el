@@ -1215,7 +1215,7 @@ so a suggestion is never a dead end."
     (cond
      ((not project) 'personal)
      ((equal marker "project") 'project)
-     ((equal marker "personal") 'personal)
+     ((equal marker "global") 'personal)
      ((eq lsp-ltex-plus-save-additions-to 'globally-defined) 'personal)
      ((eq lsp-ltex-plus-save-additions-to 'per-project-when-specified) 'project)
      ;; `either-allowing-user-choice' with no marker: the suggestion was not
@@ -1310,14 +1310,57 @@ LABEL names the action in log and error messages."
   (let ((command (lsp-get action :command)))
     (and (lsp-structure-p command) command)))
 
-(defun lsp-ltex-plus--suggestion-variant (action command target suffix)
-  "Return a copy of ACTION that saves to TARGET, its title marked by SUFFIX.
-TARGET is the string \"personal\" or \"project\"; COMMAND is ACTION's
+(defun lsp-ltex-plus--command-entries (command key)
+  "Return every entry COMMAND carries under KEY, across all languages.
+The server groups them by language code; for a title we only care how
+many there are and, when there is one, what it says."
+  (let* ((args (lsp-get command :arguments))
+         (arg0 (and (vectorp args) (aref args 0)))
+         (by-language (and arg0 (lsp-get arg0 key)))
+         (entries nil))
+    (when by-language
+      (lsp-map (lambda (_language items)
+                 (setq entries (append entries (append items nil))))
+               by-language))
+    entries))
+
+(defun lsp-ltex-plus--suggestion-title (kind command target)
+  "Title for the TARGET variant of a KIND suggestion carried by COMMAND.
+TARGET is the string \"global\" or \"project\".
+
+The title is composed here rather than derived from the one the server
+sent, because that one is localised — \"Add \='x\=' to dictionary\" in
+English, \"\='x\=' zum Wörterbuch hinzufügen\" in German — and there is no
+reliable place to insert the scope into it.  The cost is that these two
+entries read in English whatever locale the server is speaking; every
+other suggestion in the list, this one included when it is not split,
+still comes through in the server\='s own words."
+  (let ((where (if (equal target "project") "project" "global")))
+    (pcase kind
+      ('dictionary
+       (let ((words (lsp-ltex-plus--command-entries command :words)))
+         (if (= (length words) 1)
+             (format "Add '%s' to %s dictionary" (car words) where)
+           (format "Add %d words to %s dictionary" (length words) where))))
+      ('disabled-rules
+       (if (equal where "project")
+           "Disable rule for this project"
+         "Disable rule globally"))
+      ('hidden-false-positives
+       (if (equal where "project")
+           "Hide false positive for this project"
+         "Hide false positive globally"))
+      (_ (lsp-get command :title)))))
+
+(defun lsp-ltex-plus--suggestion-variant (action command kind target)
+  "Return a copy of ACTION for KIND that saves to TARGET.
+TARGET is the string \"global\" or \"project\"; COMMAND is ACTION\='s
 command object.  Both objects are copied before being changed, so the
 suggestion the server sent is left alone."
   (let* ((tagged (lsp-put (lsp-copy command) lsp-ltex-plus--target-marker target))
          (copy (lsp-copy action))
-         (copy (lsp-put copy :title (format "%s — %s" (lsp-get action :title) suffix))))
+         (copy (lsp-put copy :title
+                        (lsp-ltex-plus--suggestion-title kind command target))))
     (lsp-put copy :command tagged)))
 
 (defun lsp-ltex-plus--split-suggestion (action)
@@ -1329,9 +1372,8 @@ otherwise there is nothing to choose between."
     (when-let* ((command (lsp-ltex-plus--suggestion-command action))
                 (kind (lsp-ltex-plus--kind-for-command (lsp-get command :command))))
       (when (lsp-ltex-plus--project-file-for kind)
-        (list (lsp-ltex-plus--suggestion-variant action command "personal" "everywhere")
-              (lsp-ltex-plus--suggestion-variant action command "project"
-                                                 "in this project only"))))))
+        (list (lsp-ltex-plus--suggestion-variant action command kind "project")
+              (lsp-ltex-plus--suggestion-variant action command kind "global"))))))
 
 (defun lsp-ltex-plus--expand-suggestions (actions)
   "Return ACTIONS with this package's suggestions split in two where asked.
