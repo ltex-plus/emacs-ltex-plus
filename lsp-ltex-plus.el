@@ -968,18 +968,49 @@ keyword keys, vectors of strings as values, e.g.
                                     "false positives to hide")
 
 (defconst lsp-ltex-plus--setting-kinds
-  '((dictionary             lsp-ltex-plus--dictionary-merged
-                            lsp-ltex-plus-project-dictionary-file)
-    (enabled-rules          lsp-ltex-plus--enabled-rules-merged
-                            lsp-ltex-plus-project-enabled-rules-file)
-    (disabled-rules         lsp-ltex-plus--disabled-rules-merged
-                            lsp-ltex-plus-project-disabled-rules-file)
-    (hidden-false-positives lsp-ltex-plus--hidden-false-positives-merged
-                            lsp-ltex-plus-project-hidden-false-positives-file))
+  '((dictionary
+     :merged        lsp-ltex-plus--dictionary-merged
+     :stored        lsp-ltex-plus--dictionary-stored
+     :personal-file lsp-ltex-plus-dictionary-file
+     :project-file  lsp-ltex-plus-project-dictionary-file
+     :command       "_ltex.addToDictionary")
+    (enabled-rules
+     :merged        lsp-ltex-plus--enabled-rules-merged
+     :stored        lsp-ltex-plus--enabled-rules-stored
+     :personal-file lsp-ltex-plus-enabled-rules-file
+     :project-file  lsp-ltex-plus-project-enabled-rules-file
+     :command       nil)
+    (disabled-rules
+     :merged        lsp-ltex-plus--disabled-rules-merged
+     :stored        lsp-ltex-plus--disabled-rules-stored
+     :personal-file lsp-ltex-plus-disabled-rules-file
+     :project-file  lsp-ltex-plus-project-disabled-rules-file
+     :command       "_ltex.disableRules")
+    (hidden-false-positives
+     :merged        lsp-ltex-plus--hidden-false-positives-merged
+     :stored        lsp-ltex-plus--hidden-false-positives-stored
+     :personal-file lsp-ltex-plus-hidden-false-positives-file
+     :project-file  lsp-ltex-plus-project-hidden-false-positives-file
+     :command       "_ltex.hideFalsePositives"))
   "The four language-keyed settings, by kind.
-Each entry is (KIND PERSONAL-VARIABLE PROJECT-FILE-VARIABLE): the
-variable holding the personal merged value, and the variable naming the
-file a project may add to extend it.")
+Each entry maps a kind to the variables behind it:
+
+  :merged         the personal value the server is shown
+  :stored         the in-memory mirror of the personal file
+  :personal-file  the personal file under `user-emacs-directory'
+  :project-file   the setting naming a project's own file, if it has one
+  :command        the server command whose suggestion writes here, or nil
+                  for `enabled-rules', which no suggestion writes to")
+
+(defun lsp-ltex-plus--kind-get (kind property)
+  "Return PROPERTY of KIND from `lsp-ltex-plus--setting-kinds'."
+  (plist-get (alist-get kind lsp-ltex-plus--setting-kinds) property))
+
+(defun lsp-ltex-plus--kind-for-command (command)
+  "Return the settings kind COMMAND writes to, or nil if it writes to none."
+  (car (seq-find (lambda (entry)
+                   (equal command (plist-get (cdr entry) :command)))
+                 lsp-ltex-plus--setting-kinds)))
 
 (defun lsp-ltex-plus--dir-locals-directory ()
   "Return the directory whose `.dir-locals.el' governs the current buffer.
@@ -1016,14 +1047,114 @@ relative value resolves against the directory holding the
 The personal value — the user's defcustom merged with the file under
 `user-emacs-directory' — extended with this project's file, if it has
 one.  KIND is a key of `lsp-ltex-plus--setting-kinds'."
-  (let* ((entry (alist-get kind lsp-ltex-plus--setting-kinds))
-         (personal (symbol-value (nth 0 entry)))
-         (file (lsp-ltex-plus--project-file (nth 1 entry))))
+  (let ((personal (symbol-value (lsp-ltex-plus--kind-get kind :merged)))
+        (file (lsp-ltex-plus--project-file-for kind)))
     (if file
         (lsp-ltex-plus--merge-plists
          personal
          (lsp-ltex-plus--load-project-plist file))
       personal)))
+
+(defun lsp-ltex-plus--project-file-for (kind)
+  "Return this buffer's project file for KIND, or nil if it has none."
+  (lsp-ltex-plus--project-file (lsp-ltex-plus--kind-get kind :project-file)))
+
+;;;; -- Where a suggestion's addition is saved ----------------------------------
+
+;; Accepting a suggestion — a word to accept, a rule to switch off, a false
+;; positive to hide — adds an entry to one of the lists.  Reading always
+;; merges the personal and project lists; this only decides which file a *new*
+;; entry is written to.  Being an ordinary setting, it can itself be set from
+;; a project's `.dir-locals.el', so one project can depart from the habit you
+;; keep everywhere else.
+
+(defun lsp-ltex-plus--save-additions-to-p (value)
+  "Non-nil when VALUE is one of the `lsp-ltex-plus-save-additions-to' choices."
+  (memq value '(globally-defined per-project-when-specified
+                either-allowing-user-choice)))
+
+(defcustom lsp-ltex-plus-save-additions-to 'per-project-when-specified
+  "Where an addition goes when you accept one of LTeX+'s suggestions.
+
+This never affects what is *read*: a document is always checked against
+the union of your own lists and the project's.  It decides only where a
+newly accepted word, silenced rule or hidden false positive is written.
+
+  `globally-defined'
+      Always your own file under `user-emacs-directory', even in a
+      project that keeps its own list.  Choose this to have a project's
+      list read but only ever edited by hand.
+
+  `per-project-when-specified' (default)
+      The project's file when this project keeps one for that kind of
+      entry, and your own file otherwise.  A project that configures
+      only a dictionary therefore collects words while your personal
+      rule choices stay personal.
+
+  `either-allowing-user-choice'
+      Decide each time.  Where a project keeps its own list, the two
+      possibilities appear side by side among the suggestions, one
+      saving everywhere and one saving to this project only, and you
+      pick as you accept.  The entry is written to one of them, never
+      to both.
+
+Set from a project's `.dir-locals.el' like any other setting when one
+project deserves a different habit."
+  :type '(choice (const :tag "Always my own files" globally-defined)
+                 (const :tag "This project's files when it has them"
+                        per-project-when-specified)
+                 (const :tag "Offer both and let me choose each time"
+                        either-allowing-user-choice))
+  :safe #'lsp-ltex-plus--save-additions-to-p
+  :group 'lsp-ltex-plus)
+
+;; Marker carried on the copies of a suggestion that
+;; `either-allowing-user-choice' splits in two, naming which file that copy
+;; saves to.  It rides on the client-side command object and is never sent
+;; anywhere: these commands are handled entirely by this package, the server
+;; never receives them back.
+(defconst lsp-ltex-plus--target-marker :ltexPlusSaveTo)
+
+(defun lsp-ltex-plus--addition-target (kind command)
+  "Return `project' or `personal': where KIND's addition from COMMAND goes.
+A COMMAND carrying the marker left by `lsp-ltex-plus--split-suggestion'
+says so itself; otherwise `lsp-ltex-plus-save-additions-to' decides.
+Falls back to `personal' whenever the project offers no file for KIND,
+so a suggestion is never a dead end."
+  (let ((marker (and command (lsp-get command lsp-ltex-plus--target-marker)))
+        (project (lsp-ltex-plus--project-file-for kind)))
+    (cond
+     ((not project) 'personal)
+     ((equal marker "project") 'project)
+     ((equal marker "personal") 'personal)
+     ((eq lsp-ltex-plus-save-additions-to 'globally-defined) 'personal)
+     ((eq lsp-ltex-plus-save-additions-to 'per-project-when-specified) 'project)
+     ;; `either-allowing-user-choice' with no marker: the suggestion was not
+     ;; split (or arrived from elsewhere), so keep the conservative file.
+     (t 'personal))))
+
+(defun lsp-ltex-plus--save-addition (kind lang items command)
+  "Add ITEMS for LANG to KIND's list, in the file COMMAND's target names.
+Writing to the personal file goes through the `-stored' mirror and
+rebuilds the merged views, exactly as before.  Writing to a project file
+updates the file and refreshes its cache entry, so the next check sees
+the new entry without waiting for a modification-time comparison."
+  (if (eq (lsp-ltex-plus--addition-target kind command) 'project)
+      (let* ((path (lsp-ltex-plus--project-file-for kind))
+             (key (intern (concat ":" lang)))
+             (merged (lsp-ltex-plus--merge-plists
+                      (lsp-ltex-plus--load-project-plist path)
+                      (list key (vconcat items)))))
+        (lsp-ltex-plus--log "Saving %s for %s to project file %s" items lang path)
+        (lsp-ltex-plus--save-plist merged path)
+        (puthash path
+                 (cons (file-attribute-modification-time (file-attributes path))
+                       merged)
+                 lsp-ltex-plus--project-file-cache))
+    (lsp-ltex-plus--add-to-plist (lsp-ltex-plus--kind-get kind :stored)
+                                 (symbol-value (lsp-ltex-plus--kind-get kind :personal-file))
+                                 lang items)
+    (lsp-ltex-plus--recompute-merged)))
 
 ;;;; -- Action Handlers --------------------------------------------------------
 
