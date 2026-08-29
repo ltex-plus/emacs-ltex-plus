@@ -576,6 +576,46 @@ If Emacs cannot find the `ltex-ls-plus` binary, ensure it is in your system `PAT
 
 If it returns `nil`, you must either add the binary's directory to your `PATH` or provide the absolute path to the executable via `lsp-ltex-plus-ls-plus-executable`. See [Server Installation](#4-make-it-discoverable) for details.
 
+### Server Too Old After a Package Update
+
+Updating the Emacs package can leave you with an `ltex-ls-plus` that predates
+it. When that happens, `lsp-ltex-plus` reports the two versions and stops the
+server rather than running against one it was not written for:
+
+```
+[lsp-ltex-plus] ltex-ls-plus 18.6.9 is older than 18.7.0, which this package
+needs. Stopping the server.  See … , or set
+`lsp-ltex-plus-require-minimum-server-version' to nil to keep using it.
+```
+
+Updating the server is the real answer, and [Server
+Installation](#server-installation) covers it. But an old server is usually
+not useless — most of what you rely on keeps working, and only the newer
+features are missing — so if you are in the middle of something, you can
+carry on with it and update later:
+
+```elisp
+M-: (setq lsp-ltex-plus-require-minimum-server-version nil)
+M-x lsp-ltex-plus-mode
+```
+
+The second step matters: the version is checked when a server starts, so the
+setting takes effect on the next connection rather than immediately. The mode
+was switched off when the server was stopped, so turning it back on is what
+starts a new one. There is nothing to revert, and no need to restart Emacs.
+
+To keep the setting, put it in your configuration:
+
+```elisp
+(use-package lsp-ltex-plus
+  :custom
+  (lsp-ltex-plus-require-minimum-server-version nil))
+```
+
+Leaving it at `nil` permanently is worth avoiding. The warning still appears
+on every connection, which is deliberate: it is the reminder that the update
+is still outstanding.
+
 ### Language Not Recognized
 
 **Symptom:** No diagnostics ever appear for a buffer that should be checked. The server's stderr buffer (`*ltex-ls-plus::stderr*`) contains a line of the form:
