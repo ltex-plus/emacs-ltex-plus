@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- **`lsp-ltex-plus--kind-for-command` no longer claims an action that carries no command name.** `enabled-rules` has a nil `:command` — no suggestion writes to that list — and the lookup compared with `equal`, so a nil command name matched it. A code action from another server whose command object omits its name would then have been treated as one of this package's own: in a project keeping an enabled-rules file it would have been split into two variants with a nil title. Found by the new test suite.
+
 
 ## [0.5.0] - 2026-08-29
 

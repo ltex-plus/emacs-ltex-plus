@@ -1113,10 +1113,16 @@ Each entry maps a kind to the variables behind it:
   (plist-get (alist-get kind lsp-ltex-plus--setting-kinds) property))
 
 (defun lsp-ltex-plus--kind-for-command (command)
-  "Return the settings kind COMMAND writes to, or nil if it writes to none."
-  (car (seq-find (lambda (entry)
-                   (equal command (plist-get (cdr entry) :command)))
-                 lsp-ltex-plus--setting-kinds)))
+  "Return the settings kind COMMAND writes to, or nil if it writes to none.
+COMMAND is a server command name.  A nil COMMAND — an action carrying a
+command object with no name, which a malformed server can send — matches
+nothing: `enabled-rules\=' has a nil `:command\=' because no suggestion
+writes to it, and answering with it here would let this package claim an
+action that is not its own."
+  (and command
+       (car (seq-find (lambda (entry)
+                        (equal command (plist-get (cdr entry) :command)))
+                      lsp-ltex-plus--setting-kinds))))
 
 (defun lsp-ltex-plus--dir-locals-directory ()
   "Return the directory whose `.dir-locals.el' governs the current buffer.
