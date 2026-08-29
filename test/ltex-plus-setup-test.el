@@ -192,5 +192,130 @@ has switched the mode off."
       (setq-local lsp-ltex-plus-mode t)
       (should (funcall activate (buffer-name) major-mode)))))
 
+;;;; -- The settings surface ----------------------------------------------------
+
+;; Two hand-written lists describe the same settings: the
+;; `lsp-register-custom-settings' table, which answers every
+;; `workspace/configuration' pull, and the `workspace/didChangeConfiguration'
+;; payload pushed once from `:initialized-fn'.  Steps 2 and 3 of the
+;; "Adding a new `defcustom'" recipe are exactly these two.
+
+(defun ltex-plus-setup-test--registered-keys ()
+  "Return every `ltex.' setting key registered with lsp-mode."
+  (let (keys)
+    (maphash (lambda (key _value)
+               (when (string-prefix-p "ltex." key) (push key keys)))
+             lsp-client-settings)
+    (sort keys #'string<)))
+
+(defun ltex-plus-setup-test--payload-keys ()
+  "Return the `ltex.' keys the initial configuration push carries.
+Obtained by running the registered client's `:initialized-fn' with
+`lsp-notify' captured, so this is the payload as actually built rather
+than a reading of the source."
+  (lsp-ltex-plus--setup)
+  (let ((sent nil)
+        (workspace (ltex-plus-test-workspace)))
+    (cl-letf (((symbol-function 'lsp-notify)
+               (lambda (_method params) (setq sent params))))
+      (funcall (lsp--client-initialized-fn (gethash 'ltex-ls-plus lsp-clients))
+               workspace))
+    (should sent)
+    ;; Walk the nested plist to leaf paths: (:ltex (:latex (:commands V)))
+    ;; becomes "ltex.latex.commands", the spelling the registration uses.
+    (let (keys)
+      (cl-labels ((walk (prefix plist)
+                    (while plist
+                      (let* ((key (substring (symbol-name (pop plist)) 1))
+                             (value (pop plist))
+                             (path (if prefix (concat prefix "." key) key)))
+                        (if (and value (listp value) (keywordp (car value)))
+                            (walk path value)
+                          (push path keys))))))
+        (walk nil (plist-get sent :settings)))
+      (sort keys #'string<))))
+
+(ert-deftest ltex-plus-setup-test-pushed-settings-are-all-pullable ()
+  "Every setting in the initial push is one the client can answer for.
+A key present in the push but missing from `lsp-register-custom-settings'
+reaches the server once and is then dropped: the first
+`workspace/configuration' pull replies without it, and the server falls
+back to its own default.  The setting works until the user's first edit,
+which is the worst shape a bug of this kind can take."
+  (let ((registered (ltex-plus-setup-test--registered-keys)))
+    (dolist (key (ltex-plus-setup-test--payload-keys))
+      (should (member key registered)))))
+
+(ert-deftest ltex-plus-setup-test-registered-settings-all-resolve ()
+  "Every registered setting produces a value, and none of them signals.
+Most are lambdas reading a variable through one of the JSON-boundary
+helpers, so a renamed `defcustom' or a typo in a key shows up here rather
+than as a section the server silently receives without the field."
+  (with-temp-buffer
+    (let ((section (lsp-ltex-plus--configuration-section "ltex")))
+      (dolist (key (ltex-plus-setup-test--registered-keys))
+        ;; "ltex.latex.commands" is nested as ltex -> latex -> commands.
+        (let ((value section))
+          (dolist (step (cdr (split-string key "\\.")))
+            (should (hash-table-p value))
+            (should (gethash step value))
+            (setq value (gethash step value))))))))
+
+(ert-deftest ltex-plus-setup-test-registered-settings-name-real-variables ()
+  "Each `lsp-ltex-plus-' symbol in the registration form is bound.
+The registration is the only place several settings are named, so a
+`defcustom' renamed without it silently stops reaching the server.
+Nothing evaluates the form here -- the sources are read, so a symbol
+inside a lambda counts the same as one named directly."
+  (let ((source (with-temp-buffer
+                  (insert-file-contents
+                   (expand-file-name "lsp-ltex-plus.el" ltex-plus-test-repo-root))
+                  (buffer-string)))
+        (found nil))
+    (let* ((start (string-match "(lsp-register-custom-settings" source))
+           (end (string-match "(lsp-register-client" source start))
+           (form (substring source start end))
+           (offset 0))
+      (while (string-match "\\_<lsp-ltex-plus-[a-z0-9-]+\\_>" form offset)
+        (push (intern (match-string 0 form)) found)
+        (setq offset (match-end 0)))
+      (should (> (length found) 20))
+      (dolist (symbol (seq-uniq found))
+        (should (or (boundp symbol) (fboundp symbol)))))))
+
+;;;; -- The gated advice bodies --------------------------------------------------
+
+(ert-deftest ltex-plus-setup-test-progress-is-suppressed-only-for-us ()
+  "Progress from another server still reaches the modeline.
+The advice is on `lsp-on-progress-modeline', which every workspace goes
+through, so it has to check whose progress it is."
+  (let ((lsp-ltex-plus-show-progress nil)
+        (reached nil))
+    (cl-flet ((original (&rest _) (setq reached t)))
+      (lsp-ltex-plus--suppress-progress
+       #'original (ltex-plus-test-workspace) nil)
+      (should-not reached)
+      (lsp-ltex-plus--suppress-progress
+       #'original
+       (make-lsp--workspace :client (make-lsp--client :server-id 'texlab)) nil)
+      (should reached))))
+
+(ert-deftest ltex-plus-setup-test-progress-follows-a-mid-session-toggle ()
+  "Turning `lsp-ltex-plus-show-progress' back on takes effect at once.
+The advice is installed once, at setup, and is never removed -- flipping
+the option cannot uninstall it.  So the body re-reads the option rather
+than capturing it, and switching progress back on falls through to the
+original handler instead of needing a restart."
+  (let ((reached nil))
+    (cl-flet ((original (&rest _) (setq reached t)))
+      (let ((lsp-ltex-plus-show-progress nil))
+        (lsp-ltex-plus--suppress-progress
+         #'original (ltex-plus-test-workspace) nil))
+      (should-not reached)
+      (let ((lsp-ltex-plus-show-progress t))
+        (lsp-ltex-plus--suppress-progress
+         #'original (ltex-plus-test-workspace) nil))
+      (should reached))))
+
 (provide 'ltex-plus-setup-test)
 ;;; ltex-plus-setup-test.el ends here

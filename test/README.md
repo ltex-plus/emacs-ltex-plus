@@ -58,8 +58,30 @@ that have nothing to do with the code under test.
 | `ltex-plus-additions-test.el` | Where an accepted suggestion is written, all three values of `lsp-ltex-plus-save-additions-to`, the two-suggestion split, and the pass-through for other servers' code actions |
 | `ltex-plus-safety-test.el` | The `:safe` declarations — the endpoint allowlist, the project-path rule, and the policy that everything else is vouched for on a type check |
 | `ltex-plus-synthetic-test.el` | File-less and comint buffers: the virtual-buffer plists, the comint input region and its busy gate, and routing a `WorkspaceEdit` back to a buffer that visits no file |
-| `ltex-plus-setup-test.el` | The client registration, and that re-running setup never installs an advice twice |
+| `ltex-plus-setup-test.el` | The client registration, the settings surface (the push and the pull describing the same settings), the gated advice bodies, and that re-running setup never installs an advice twice |
+| `ltex-plus-mode-test.el` | What the minor mode decides before it reaches for a server: the programming-language guard, registering an unseen major mode, and giving up when the binary is missing |
 | `ltex-plus-patch-test.el` | Kind-First routing: a server request with a colliding id stays a request |
+
+## What is deliberately not covered
+
+Roughly a sixth of the package never executes during a run, and almost
+all of it is code that only runs with a live workspace: the minor mode's
+five-way startup `cond` and its deactivation path, `--rejoin-workspace`,
+the comint submit re-sync, `--fileless-on-save`, and the broadcast half
+of `lsp-ltex-plus-reload-settings`. Mocking `lsp-mode` far enough to
+reach them would produce a fixture that drifts from the real thing and
+tests itself; the manual checklist in the developer guide covers them
+instead.
+
+Two smaller gaps are simply not worth the code: the latency-benchmark
+advice bodies, and the two deprecated protocol backports
+(`--create-filter-function-patch`, `--request-while-no-input-patch`),
+which are only installed on an `lsp-mode` predating the upstream fixes.
+
+There is no integration test against a real `ltex-ls-plus`. The protocol
+facts the client is built on were established by driving the server from
+a raw Python client (see `dev/`), and they are recorded in the developer
+guide; nothing here re-checks them against a running server.
 
 ## Adding a test
 
