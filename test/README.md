@@ -100,6 +100,7 @@ that have nothing to do with the code under test.
 | `ltex-plus-setup-test.el` | The client registration, the settings surface (the push and the pull describing the same settings), the gated advice bodies, and that re-running setup never installs an advice twice |
 | `ltex-plus-mode-test.el` | What the minor mode decides before it reaches for a server: the programming-language guard, registering an unseen major mode, and giving up when the binary is missing |
 | `ltex-plus-patch-test.el` | Kind-First routing: a server request with a colliding id stays a request |
+| `ltex-plus-benchmark-test.el` | The latency advice: that `lsp-notify` is always called through, and the per-workspace measurement bookkeeping |
 | `ltex-plus-live-test.el` | Opt-in, against a real server: the whole pipeline, per-project language and dictionaries, file-less buffers, teardown, and the reload broadcast |
 
 ## What is deliberately not covered
@@ -113,10 +114,10 @@ reach them would produce a fixture that drifts from the real thing and
 tests itself; the manual checklist in the developer guide covers them
 instead.
 
-Two smaller gaps are simply not worth the code: the latency-benchmark
-advice bodies, and the two deprecated protocol backports
-(`--create-filter-function-patch`, `--request-while-no-input-patch`),
-which are only installed on an `lsp-mode` predating the upstream fixes.
+The two deprecated protocol backports (`--create-filter-function-patch`,
+`--request-while-no-input-patch`) are left alone deliberately. They are
+installed only on an `lsp-mode` predating the upstream fixes; if one
+breaks, an issue is the right way to hear about it.
 
 There is no integration test against a real `ltex-ls-plus`. The protocol
 facts the client is built on were established by driving the server from
