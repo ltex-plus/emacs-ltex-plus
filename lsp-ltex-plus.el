@@ -1421,7 +1421,7 @@ Anything else passes through untouched, and the sequence type is kept."
   (cons (lsp-ltex-plus--expand-suggestions (car args)) (cdr args)))
 
 (defun lsp-ltex-plus--install-suggestion-splitting ()
-  "Make both places lsp-mode collects suggestions see the split ones."
+  "Make both places `lsp-mode' collects suggestions see the split ones."
   (advice-add 'lsp-code-actions-at-point :filter-return
               #'lsp-ltex-plus--expand-suggestions)
   ;; The modeline indicator issues its own request instead of going through
@@ -1464,7 +1464,7 @@ so they are located by scanning for the marker this package sets on them."
 (defun lsp-ltex-plus--call-in-document-context (workspace uri fn)
   "Call FN with no arguments, with the buffer for URI current.
 WORKSPACE is made the active workspace throughout, mirroring what
-lsp-mode does around its own configuration responder.
+`lsp-mode' does around its own configuration responder.
 
 When URI resolves to no live buffer — it was killed between the check
 starting and the pull arriving — fall back to a temporary buffer under
@@ -1489,9 +1489,9 @@ what happens when it names no live buffer."
   `(lsp-ltex-plus--call-in-document-context ,workspace ,uri (lambda () ,@body)))
 
 (defun lsp-ltex-plus--configuration-section (section)
-  "Return the settings object lsp-mode would build for SECTION.
+  "Return the settings object `lsp-mode' would build for SECTION.
 Read from the current buffer, so buffer-local and directory-local values
-win.  The two functions called here are the same ones lsp-mode's generic
+win.  The two functions called here are the same ones `lsp-mode's generic
 responder uses, so the shape of the answer — including the handling of
 dotted section names and of an omitted section — stays identical to it."
   (if section
@@ -1501,7 +1501,7 @@ dotted section names and of an omitted section — stays identical to it."
 (defun lsp-ltex-plus--request-configuration (workspace params)
   "Handle the standard `workspace/configuration' request per document.
 
-Replaces lsp-mode's generic responder for this client only, so that each
+Replaces `lsp-mode's generic responder for this client only, so that each
 requested item is answered from the buffer its `scopeUri' names rather
 than from an arbitrary buffer of the workspace.  Other servers running
 alongside this one are unaffected: request handlers are per-client.
@@ -1552,7 +1552,7 @@ answered from the buffer its `scopeUri' names; see
 
 PARAMS may arrive as either a plist (when `lsp-use-plists' is non-nil)
 or a hash-table (the default).  We read it via `lsp-get', the
-representation-agnostic accessor exported by lsp-mode.
+representation-agnostic accessor exported by `lsp-mode'.
 
 The result is a vector — one entry per requested item — to match the
 shape `vscode-languageclient' returns to the server.  Each entry is a
