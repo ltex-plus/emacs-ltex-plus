@@ -443,7 +443,7 @@ An empty space means the parameter has no direct counterpart at that layer: typi
 >
 > - **L** — *Live*: read by the client at the moment it is needed — on every `workspace/configuration` pull, which the server issues before each diagnostic publish, or (for `lsp-ltex-plus-save-additions-to`) at the moment you accept a suggestion. A plain `setq` is honoured straight away — no manual notification, no restart.
 > - **R** — *Requires server restart*: the server reads the value at JVM init only. Change the variable, then run `M-x lsp-workspace-restart` for it to take effect.
-> - **S** — *Setup-only*: wired during `lsp-ltex-plus--setup` (the first time a supported buffer is opened in the Emacs session). Typically installed via `advice-add` or baked into the `lsp-register-client` call. Changing the variable later with `setq` or `customize-set-variable` does not re-apply the change. To force a mid-session update, restart Emacs or evaluate `M-: (lsp-ltex-plus--setup)`.
+> - **S** — *Setup-only*: wired once, the first time a supported buffer is opened in the Emacs session — installed via `advice-add` or baked into the client registration. Changing the variable later with `setq` or `customize-set-variable` does not re-apply it on its own; run `M-x lsp-ltex-plus-reload-settings` afterwards. For a setting baked into the registration (`lsp-ltex-plus-multi-root` above all) that reaches only workspaces started afterwards, since a running one holds its own copy — restart the workspace for those.
 >
 > **†** on `lsp-ltex-plus-major-modes` — this is a registry, not a customization knob. It is listed here for reference because the client reads from it, but users should not mutate it directly. To adjust which modes the dispatcher activates on, call `lsp-ltex-plus-enable-for-modes` with its `:restrict-to`, `:exclude`, and `:extend-to` keyword arguments (see [Customizing Supported Modes](#customizing-supported-modes)).
 >
@@ -500,7 +500,7 @@ The on-disk files use the same Lisp representation — open `~/.emacs.d/lsp-ltex
 (:en-US ["Alberti" "elisp" "plist"] :it ["Caravaggio"])
 ```
 
-Hand-editing the file is supported; afterwards run `M-x lsp-ltex-plus-reload-and-notify-server` (see [Inspecting and editing](#inspecting-and-editing)) or restart Emacs to pick up the change.
+Hand-editing the file is supported; afterwards run `M-x lsp-ltex-plus-reload-settings` (see [Inspecting and editing](#inspecting-and-editing)) or restart Emacs to pick up the change.
 
 #### What each one is for
 
@@ -550,7 +550,7 @@ Two are qualified, for reasons of safety rather than taste. `lsp-ltex-plus-lt-se
 #### Inspecting and editing
 
 - `M-x lsp-ltex-plus-list-dictionary` — prints the words in force for the current buffer: the global list (the union of `:custom` and the file contents) with this project's dictionary folded in where it keeps one, naming the project file so an unexpected word can be traced to its source.
-- `M-x lsp-ltex-plus-reload-and-notify-server` — re-reads all four files, rebuilds the merged views combining them with your `:custom` values, and notifies every running `ltex-ls-plus` workspace so the change takes effect on the next check. Convenient for bulk edits: open any of the four files under `~/.emacs.d/lsp-ltex-plus/` in a buffer, edit entries across one or more languages, save, then run this command. Also the right command to run after changing an `lsp-ltex-plus-*` defcustom in a live session — it pushes the new value to the server without an Emacs restart.
+- `M-x lsp-ltex-plus-reload-settings` — the one command for making a configuration change take effect. It re-reads all four files, rebuilds the merged views combining them with your `:custom` values, re-applies the settings marked **S** in the table above, and notifies every running `ltex-ls-plus` workspace so the change takes effect on the next check. Convenient for bulk edits: open any of the four files under `~/.emacs.d/lsp-ltex-plus/` in a buffer, edit entries across one or more languages, save, then run this command. Also the right command to run after changing an `lsp-ltex-plus-*` defcustom in a live session — it pushes the new value to the server without an Emacs restart.
 - The four files are plain Emacs plists. After hand-editing, either run the reload command above or restart Emacs to pick up the change.
 
 #### Pro tip: per-file overrides with magic comments

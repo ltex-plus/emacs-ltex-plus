@@ -948,42 +948,55 @@ No-op if `lsp-mode' is not loaded or no ltex-ls-plus workspace is active."
         (with-lsp-workspace ws
           (lsp-notify "workspace/didChangeConfiguration" '(:settings nil)))))))
 
-(defun lsp-ltex-plus-reload-and-notify-server ()
-  "Reload settings from disk and push them to every ltex-ls-plus workspace.
-Two steps run together:
+(defun lsp-ltex-plus-reload-settings ()
+  "Apply changes to any `lsp-ltex-plus-*\=' setting, without restarting Emacs.
 
-  1. Re-read the four external plist files under
-     the `lsp-ltex-plus/' subdirectory of `user-emacs-directory'
-     and rebuild the merged views
-     (each merged view combines a file's contents with its
-     corresponding user defcustom), and drop the cache of any
-     project settings files (see the `lsp-ltex-plus-project-*-file'
-     settings).
-  2. Send `workspace/didChangeConfiguration' to every running
-     ltex-ls-plus workspace so the new state takes effect on the
-     next check, with no server restart.
+Everything the client reads is refreshed in one go:
 
-Project files are noticed on their own when their modification time
-moves, so this is only needed for them if one was changed in a way that
-left the time untouched.
+  1. The four word-list files under the `lsp-ltex-plus/\=' subdirectory of
+     `user-emacs-directory\=' are re-read and their merged views rebuilt,
+     and the cache of project settings files is dropped (see the
+     `lsp-ltex-plus-project-*-file\=' settings).
+  2. The client is registered again and its advice re-installed, which
+     is what picks up a setting the README marks *Setup-only*.
+  3. Every running ltex-ls-plus workspace is told to fetch its settings
+     again, so the change takes effect on the next check with no server
+     restart.
 
-Use this whenever you change anything that the server reads —
-either by editing one of the on-disk files by hand (bulk-adding
-words, removing stale disabled rules) or by setting an
-`lsp-ltex-plus-*' defcustom in an active session and wanting the
-change applied without reloading."
+Use it after changing any `lsp-ltex-plus-*\=' setting in a running
+session, or after hand-editing one of the word-list files.  Project
+files are noticed on their own when their modification time moves, so
+they need this only if one was changed in a way that left the time
+untouched.
+
+One thing it cannot reach: a setting baked into the client registration,
+`lsp-ltex-plus-multi-root\=' above all, reaches only workspaces started
+afterwards, because a running workspace holds its own copy of the
+registration.  Restart the workspace for those.
+
+Safe to run as often as you like.  Registering the client again replaces
+the previous registration rather than adding a second one, and every
+piece of advice this package installs is a named function, which
+`advice-add\=' declines to install twice."
   (interactive)
-  (lsp-ltex-plus--load-external-settings)
+  (lsp-ltex-plus--setup)
   (lsp-ltex-plus--notify-ltex-workspaces)
-  (message "[lsp-ltex-plus] Settings reloaded and pushed to server."))
+  (message "[lsp-ltex-plus] Settings reloaded and pushed to the server."))
 
-;; Deprecated alias (introduced in v0.3.0, renamed in v0.3.1).
-;; The previous name described only the disk-reload half; the function
-;; also pushes to the server, which is what makes settings take effect.
+;; Superseded names.  `-reload-external-settings' described only the
+;; disk-reload half (v0.3.0, renamed in v0.3.1); `-reload-and-notify-server'
+;; then described the disk reload and the push, but not the re-registration
+;; that a *Setup-only* setting needs -- so users had to know which of two
+;; commands to reach for.  There is now one.
+(define-obsolete-function-alias 'lsp-ltex-plus-reload-and-notify-server
+  #'lsp-ltex-plus-reload-settings
+  "0.5.0"
+  "Merged with the setup path, so one command applies any setting change.")
+
 (define-obsolete-function-alias 'lsp-ltex-plus-reload-external-settings
-  #'lsp-ltex-plus-reload-and-notify-server
+  #'lsp-ltex-plus-reload-settings
   "0.3.1"
-  "Renamed to better describe what the function does (reload + push to server).")
+  "Renamed; see `lsp-ltex-plus-reload-settings'.")
 
 ;;;; -- Project-local settings -------------------------------------------------
 
