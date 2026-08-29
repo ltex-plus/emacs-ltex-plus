@@ -199,6 +199,33 @@ has quietly filtered out of the workspace."
       (should lsp-ltex-plus--fileless-uri)
       (should (ltex-plus-live-diagnostics)))))
 
+(ltex-plus-live-deftest ltex-plus-live-test-one-server-serves-every-root
+    "A second root joins the running server instead of starting another.
+That is the whole promise of `lsp-ltex-plus-multi-root', and its default
+is on.  It is also the only claim here that nothing else would notice
+being broken: two JVMs check documents exactly as correctly as one, so
+every other test in this file passed while the package was quietly
+starting a second server for `*scratch*' -- half a gigabyte of Java, for
+a buffer with no file.
+
+A file-less buffer is the sharp case because it anchors at
+`temporary-file-directory', which is nobody's project root, so the
+per-root lookup in `--rejoin-workspace' can never hit.  Two ordinary
+projects reach it too."
+  (ltex-plus-live-test--setup)
+  (ltex-plus-live-open (ltex-plus-live-write "first/doc.md" "Text.\n"))
+  (ltex-plus-live-open (ltex-plus-live-write "second/doc.md" "Text.\n"))
+  (let ((buffer (generate-new-buffer "*ltex-plus-live-second-server*")))
+    (push buffer ltex-plus-live--buffers)
+    (with-current-buffer buffer
+      (text-mode)
+      (insert "He go to school.\n")
+      (ltex-plus-live-after-publish (lambda () (lsp-ltex-plus-mode 1))
+                                    "the check of a file-less buffer")))
+  (should (= 1 (seq-count (lambda (workspace)
+                            (eq 'ltex-ls-plus (lsp--workspace-server-id workspace)))
+                          (lsp--session-workspaces (lsp-session))))))
+
 ;;;; -- Turning the mode off ----------------------------------------------------
 
 (ltex-plus-live-deftest ltex-plus-live-test-teardown-clears-and-keeps-the-server

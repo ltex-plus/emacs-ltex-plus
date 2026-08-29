@@ -2829,22 +2829,35 @@ started for the root."
                            (when-let* ((buf-file (buffer-file-name))
                                        (root (lsp--calculate-root session buf-file)))
                              (lsp-f-canonical root))))
-         (workspace (and client project-root
-                         (seq-find
-                          (lambda (ws)
-                            (eq 'ltex-ls-plus (lsp--workspace-server-id ws)))
-                          (gethash project-root
-                                   (lsp-session-folder->servers session))))))
+         (existing (and client project-root
+                        (seq-find
+                         (lambda (ws)
+                           (eq 'ltex-ls-plus (lsp--workspace-server-id ws)))
+                         (gethash project-root
+                                  (lsp-session-folder->servers session))))))
     (cond
-     (workspace
-      (lsp--open-in-workspace workspace)
-      (cl-pushnew workspace lsp--buffer-workspaces))
-     ((and client project-root)
-      (let ((new-ws (lsp--start-connection session client project-root)))
-        (when new-ws
-          (cl-pushnew new-ws lsp--buffer-workspaces))))
+     (existing
+      (lsp--open-in-workspace existing)
+      (cl-pushnew existing lsp--buffer-workspaces))
+     ((not (and client project-root))
+      (lsp--warn "[lsp-ltex-plus] Could not rejoin workspace."))
      (t
-      (lsp--warn "[lsp-ltex-plus] Could not rejoin workspace.")))))
+      ;; No workspace for this root yet.  Before starting a second server,
+      ;; look for one already running for a *different* root: that is what
+      ;; `lsp-ltex-plus-multi-root' asks for, and `lsp-mode' resolves it on
+      ;; the server id alone, ignoring the root.  Omitting this step is not
+      ;; a small loss — a file-less buffer anchors at
+      ;; `temporary-file-directory', which is never any project's root, so
+      ;; `M-x lsp-ltex-plus-mode' in `*scratch*' beside an open project
+      ;; would start a whole second JVM.  This mirrors the three-step
+      ;; cascade in `lsp--ensure-lsp-servers'; we reimplement it here only
+      ;; to avoid `(lsp)' re-sending `didOpen' to co-tenant servers.
+      ;; `lsp--find-multiroot-workspace' registers the new root and opens
+      ;; the buffer itself, so neither branch needs `lsp--open-in-workspace'.
+      (when-let* ((workspace
+                   (or (lsp--find-multiroot-workspace session client project-root)
+                       (lsp--start-connection session client project-root))))
+        (cl-pushnew workspace lsp--buffer-workspaces))))))
 
 ;;;###autoload
 (define-minor-mode lsp-ltex-plus-mode
