@@ -226,6 +226,106 @@ projects reach it too."
                             (eq 'ltex-ls-plus (lsp--workspace-server-id workspace)))
                           (lsp--session-workspaces (lsp-session))))))
 
+;;;; -- The comint input region -------------------------------------------------
+
+(ltex-plus-live-deftest ltex-plus-live-test-comint-input-is-checked-and-cleared
+    "The input a user is typing is checked, and clears when submitted.
+
+Two things only a running server shows.  That the region-restricted
+virtual buffer really does present the input as a document the server
+will check -- the offline tests can show the plist computes the right
+string, not that lsp-mode sends it.  And that submitting clears the
+diagnostics: nothing fires a check on submit by itself, because the edit
+that empties the region falls outside it, so `--comint-on-submit'
+schedules a re-sync that pushes the now-empty region.  Without it the
+squiggles stay on text the user has already sent."
+  (ltex-plus-live-test--setup)
+  ;; A server already up, so activating the comint buffer joins it.
+  (ltex-plus-live-open (ltex-plus-live-write "comint-anchor.md" "Text.\n"))
+  (let* ((buffer (generate-new-buffer "*ltex-plus-live-shell*"))
+         ;; A process with no program: Emacs allocates the pty and the
+         ;; process mark and runs nothing, which is all comint needs here.
+         (process (start-process "ltex-plus-live-shell" buffer nil)))
+    (push buffer ltex-plus-live--buffers)
+    (unwind-protect
+        (with-current-buffer buffer
+          (comint-mode)
+          (insert "previous output\n" "shell> ")
+          (set-marker (process-mark process) (point))
+          (insert "He go to school.")
+          (let ((inhibit-message t))
+            (ltex-plus-live-after-publish (lambda () (lsp-ltex-plus-mode 1))
+                                          "the first check of the input"))
+          (should lsp-ltex-plus--comint-active)
+          (should (ltex-plus-live-diagnostics))
+          ;; The output above the prompt is not part of the document.
+          (should-not (seq-some (lambda (m) (string-match-p "output" m))
+                                (ltex-plus-live-messages)))
+          (ltex-plus-live-after-publish
+           (lambda () (comint-send-input))
+           "the re-sync after submitting")
+          (should-not (ltex-plus-live-diagnostics)))
+      (delete-process process))))
+
+;;;; -- Saving a file-less buffer to a real file --------------------------------
+
+(ltex-plus-live-deftest ltex-plus-live-test-saving-a-scratch-buffer-hands-over
+    "A file-less buffer saved to disk is re-checked under its real name.
+
+The handover has two halves that have to meet.  Ours runs first and
+closes the synthetic document while its URI is still in force; lsp-mode's
+runs next and reconnects the buffer under the real file.  Getting the
+order wrong leaves the server holding a document that no longer exists,
+or reconnects before the close is sent -- neither of which shows up
+offline, where nothing is connected to notice.
+
+What this does NOT cover, because it does not currently happen:
+`lsp-ltex-plus--fileless-on-save' never runs.  Saving re-runs the major
+mode, which discards buffer-local variables including the buffer-local
+hook entry the handler was added to, so the synthetic document is never
+closed and the server keeps it open under a URI nothing will update
+again.  Asserting `lsp-ltex-plus--fileless-uri' is nil afterwards looks
+like evidence that the handler ran and is not: the same major-mode
+change clears that variable by itself.
+
+The dispatcher is installed here for a related reason: saving under a new name re-runs the major mode, and that discards
+buffer-local variables, `lsp-ltex-plus-mode' among them.  What turns the
+mode back on is `lsp-ltex-plus--maybe-activate' on
+`after-change-major-mode-hook'.  Every real session has it, from
+`lsp-ltex-plus-enable-for-modes' at startup; a test that omits it sees
+the buffer go quiet and looks like a broken handover."
+  (ltex-plus-live-test--setup)
+  (ltex-plus-live-open (ltex-plus-live-write "save-anchor.md" "Text.\n"))
+  (let ((after-change-major-mode-hook after-change-major-mode-hook)
+        (lsp-ltex-plus--enabled-modes lsp-ltex-plus--enabled-modes)
+        (buffer (generate-new-buffer "*ltex-plus-live-draft*"))
+        (path (expand-file-name "saved-draft.md" (ltex-plus-live-root))))
+    (lsp-ltex-plus-enable-for-modes)
+    (push buffer ltex-plus-live--buffers)
+    (with-current-buffer buffer
+      (text-mode)
+      (insert "He go to school.\n")
+      (let ((inhibit-message t))
+        (ltex-plus-live-after-publish (lambda () (lsp-ltex-plus-mode 1))
+                                      "the check of the file-less buffer"))
+      (should lsp-ltex-plus--fileless-uri)
+      (should (ltex-plus-live-diagnostics))
+      (let ((synthetic lsp-ltex-plus--fileless-uri)
+            (inhibit-message t))
+        (write-file path)
+        (should (equal (buffer-file-name) path))
+        (should-not (equal (lsp--buffer-uri) synthetic))
+        (should (equal (lsp--uri-to-path (lsp--buffer-uri)) path)))
+      ;; lsp-mode's half: reconnected, under the project the file is in.
+      (should lsp-ltex-plus-mode)
+      (ltex-plus-live-until (lambda () (ltex-plus-live-diagnostics))
+                            "the re-check under the real file name")
+      (should (member (ltex-plus-live-root)
+                      (mapcar (lambda (workspace)
+                                (file-name-as-directory
+                                 (lsp--workspace-root workspace)))
+                              lsp--buffer-workspaces))))))
+
 ;;;; -- Turning the mode off ----------------------------------------------------
 
 (ltex-plus-live-deftest ltex-plus-live-test-teardown-clears-and-keeps-the-server

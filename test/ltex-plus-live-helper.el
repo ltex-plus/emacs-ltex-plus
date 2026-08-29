@@ -212,7 +212,13 @@ LTEX+ reports an unknown word by quoting it in the message."
             (file-name-as-directory (make-temp-file "ltex-plus-live-" t)))))
 
 (defun ltex-plus-live-write (name contents &optional root)
-  "Write CONTENTS to NAME under ROOT (default the shared root); return its path."
+  "Write CONTENTS to NAME under ROOT (default the shared root); return its path.
+NAME must be unique across the file.  Buffers opened by one test stay
+alive for the rest of the process, so rewriting a name another test is
+still visiting makes the next `find-file-noselect' ask whether to reread
+it from disk -- and in batch that question reaches an empty stdin and
+fails the test with `end-of-file', naming neither the file nor the
+test that wrote it."
   (let ((path (expand-file-name name (or root (ltex-plus-live-root)))))
     (make-directory (file-name-directory path) t)
     (with-temp-file path (insert contents))
