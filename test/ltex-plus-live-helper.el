@@ -37,7 +37,7 @@
 (defconst ltex-plus-live-timeout 60
   "Seconds to wait for the server.  Generous: it starts a JVM.")
 
-(defconst ltex-plus-live-server-floor "18.7"
+(defconst ltex-plus-live-server-floor "18.7.0"
   "Oldest `ltex-ls-plus' these tests are written against.
 The README calls 18.7 the recommended version; the Emacs-Lisp parser and
 the `serverInfo' the tests read both arrived around it.  Nothing in the

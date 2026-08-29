@@ -271,5 +271,141 @@ Renaming would silently discard whichever file lost."
     (should (eq (indirect-function name)
                 (indirect-function 'lsp-ltex-plus-reload-settings)))))
 
+
+;;;; -- The server version guard -----------------------------------------------
+
+;; Checked once the server has connected and said what it is.  A server
+;; below the floor, or one that cannot say, is stopped -- unless the user
+;; has opted out, in which case the warning stands and the server does not.
+
+(ert-deftest ltex-plus-settings-test-version-comparison-ignores-build-metadata ()
+  "A release version compares on its leading numbers alone.
+Real versions carry a pre-release suffix and build metadata that
+`version-to-list' will not read, so comparing whole strings signals."
+  (should (lsp-ltex-plus--version-at-least-p "18.7" "18.7.0"))
+  (should (lsp-ltex-plus--version-at-least-p "18.7.0" "18.7.0"))
+  (should (lsp-ltex-plus--version-at-least-p
+           "18.7.1-alpha.32+2026-08-26.g7977ac67" "18.7.0"))
+  (should (lsp-ltex-plus--version-at-least-p "19.0" "18.7.0"))
+  (should-not (lsp-ltex-plus--version-at-least-p "18.6.9" "18.7.0"))
+  (should-not (lsp-ltex-plus--version-at-least-p "17.9" "18.7.0")))
+
+(ert-deftest ltex-plus-settings-test-an-unreadable-version-is-never-new-enough ()
+  "Anything that is not a version fails the comparison.
+The guard treats that as a failure rather than a pass: a server that
+completed the handshake should have been able to say what it is."
+  (should-not (lsp-ltex-plus--version-at-least-p nil "18.7.0"))
+  (should-not (lsp-ltex-plus--version-at-least-p "" "18.7.0"))
+  (should-not (lsp-ltex-plus--version-at-least-p "unknown" "18.7.0")))
+
+(defmacro ltex-plus-settings-test--enforcing (reported &rest body)
+  "Run the version guard against a server REPORTED by the protocol.
+REPORTED is what `serverInfo' gave, or nil for an lsp-mode that cannot
+say.  Inside BODY, `stopped' says whether the workspace was shut down,
+`warned' is what the user was told, and `asked-binary' whether the
+binary was consulted."
+  (declare (indent 1) (debug t))
+  `(let ((lsp-ltex-plus--server-version ,reported)
+         (stopped nil) (warned nil) (asked-binary nil))
+     (cl-letf (((symbol-function 'lsp-ltex-plus--shutdown-workspace)
+                (lambda (_workspace) (setq stopped t)))
+               ((symbol-function 'message)
+                (lambda (format &rest args) (setq warned (apply #'format format args)))))
+       (ignore stopped warned asked-binary)
+       ,@body)))
+
+(ert-deftest ltex-plus-settings-test-an-old-server-is-stopped ()
+  "A server below the floor is stopped, and the user is told which."
+  (let ((lsp-ltex-plus-require-minimum-server-version t))
+    (ltex-plus-settings-test--enforcing "18.6.9"
+      (lsp-ltex-plus--enforce-server-version (ltex-plus-test-workspace))
+      (should stopped)
+      (should (string-match-p "18\\.6\\.9" warned))
+      (should (string-match-p (regexp-quote lsp-ltex-plus-minimum-server-version)
+                              warned)))))
+
+(ert-deftest ltex-plus-settings-test-opting-out-keeps-the-server-running ()
+  "Opting out leaves the server up, and still warns.
+The user has said they know; that is a reason not to stop them, not a
+reason to stop telling them."
+  (let ((lsp-ltex-plus-require-minimum-server-version nil))
+    (ltex-plus-settings-test--enforcing "18.6.9"
+      (lsp-ltex-plus--enforce-server-version (ltex-plus-test-workspace))
+      (should-not stopped)
+      (should warned)
+      (should (string-match-p "18\\.6\\.9" warned)))))
+
+(ert-deftest ltex-plus-settings-test-the-warning-names-the-way-out ()
+  "When stopping, the warning names the setting that prevents it.
+Being told the server was stopped is half an answer if the way to keep
+it running is undocumented at the point it happens."
+  (let ((lsp-ltex-plus-require-minimum-server-version t))
+    (ltex-plus-settings-test--enforcing "18.6.9"
+      (lsp-ltex-plus--enforce-server-version (ltex-plus-test-workspace))
+      (should (string-match-p "lsp-ltex-plus-require-minimum-server-version"
+                              warned)))))
+
+(ert-deftest ltex-plus-settings-test-a-current-server-is-left-alone ()
+  "A server meeting the floor is neither stopped nor mentioned."
+  (let ((lsp-ltex-plus-require-minimum-server-version t))
+    (ltex-plus-settings-test--enforcing "18.7.1-alpha.32+2026-08-26.g7977ac67"
+      (lsp-ltex-plus--enforce-server-version (ltex-plus-test-workspace))
+      (should-not stopped)
+      (should-not warned))))
+
+(ert-deftest ltex-plus-settings-test-an-undeterminable-version-is-stopped ()
+  "A version nobody can read is treated as a failure, not a pass.
+The server answered the handshake, so it should have been able to say
+what it is; that it could not means something is wrong."
+  (let ((lsp-ltex-plus-require-minimum-server-version t))
+    (ltex-plus-settings-test--enforcing nil
+      (cl-letf (((symbol-function 'lsp-ltex-plus--installed-server-version)
+                 (lambda () (setq asked-binary t) nil)))
+        (lsp-ltex-plus--enforce-server-version (ltex-plus-test-workspace)))
+      (should stopped)
+      (should (string-match-p "Cannot determine" warned)))))
+
+(ert-deftest ltex-plus-settings-test-the-binary-answers-when-the-protocol-cannot ()
+  "With no version from `serverInfo', the binary is asked instead.
+Which is every installation until the lsp-mode accessors are merged."
+  (let ((lsp-ltex-plus-require-minimum-server-version t))
+    (ltex-plus-settings-test--enforcing nil
+      (cl-letf (((symbol-function 'lsp-ltex-plus--installed-server-version)
+                 (lambda () (setq asked-binary t) "18.6.9")))
+        (lsp-ltex-plus--enforce-server-version (ltex-plus-test-workspace)))
+      (should asked-binary)
+      (should stopped)
+      (should (string-match-p "18\\.6\\.9" warned)))))
+
+(ert-deftest ltex-plus-settings-test-the-protocol-answer-is-preferred ()
+  "When `serverInfo' supplied a version, the binary is not run.
+The running server is the authority on what it is, and asking the binary
+costs a subprocess."
+  (let ((lsp-ltex-plus-require-minimum-server-version t))
+    (ltex-plus-settings-test--enforcing "18.7.1"
+      (cl-letf (((symbol-function 'lsp-ltex-plus--installed-server-version)
+                 (lambda () (setq asked-binary t) "1.0")))
+        (lsp-ltex-plus--enforce-server-version (ltex-plus-test-workspace)))
+      (should-not asked-binary)
+      (should-not stopped))))
+
+(ert-deftest ltex-plus-settings-test-stopping-switches-the-mode-off ()
+  "Shutting the server down turns the mode off in its buffers.
+`:activation-fn' reads nothing but that variable, so a buffer left with
+the mode on would invite lsp-mode to start the same server again."
+  (let ((buffer (generate-new-buffer " *ltex-plus-settings-test-stop*"))
+        (shut nil))
+    (unwind-protect
+        (progn
+          (with-current-buffer buffer (setq-local lsp-ltex-plus-mode t))
+          (cl-letf (((symbol-function 'lsp-workspace-shutdown)
+                     (lambda (_workspace) (setq shut t))))
+            (lsp-ltex-plus--shutdown-workspace
+             (make-lsp--workspace :client (gethash 'ltex-ls-plus lsp-clients)
+                                  :buffers (list buffer))))
+          (should shut)
+          (should-not (buffer-local-value 'lsp-ltex-plus-mode buffer)))
+      (kill-buffer buffer))))
+
 (provide 'ltex-plus-settings-test)
 ;;; ltex-plus-settings-test.el ends here

@@ -271,6 +271,41 @@ command, expect the word to stop being flagged."
        "the re-check after reloading settings")
       (should-not (ltex-plus-live-flagged-p word)))))
 
+(ltex-plus-live-deftest ltex-plus-live-test-too-old-a-server-is-stopped
+    "A server below the floor is started, told to stop, and stops.
+The floor is raised for the length of the test so that the real server
+counts as too old; there is no other way to get a genuinely stale server
+into a test.  What only a running server can show is checked here: that
+the shutdown happens, and that the mode goes off with it.
+
+The running server is stopped first, because the guard is part of
+initialization -- a buffer that joins a workspace already up never
+reaches it.  That is the intended behaviour, not an accident: the server
+being joined is the one that was already checked.
+
+Named to sort last: it stops the server the other tests share."
+  (ltex-plus-live-test--setup)
+  ;; Start from no server, so that activating below brings up a new one
+  ;; and the guard runs as part of its initialization.
+  (when-let* ((running (ltex-plus-live-workspace)))
+    (lsp-workspace-shutdown running)
+    (ltex-plus-live-until (lambda () (null (ltex-plus-live-workspace)))
+                          "the shared server to stop"))
+  (let ((lsp-ltex-plus-minimum-server-version "99.0")
+        (lsp-ltex-plus-require-minimum-server-version t)
+        (buffer (ltex-plus-test-visit
+                 (ltex-plus-live-write "stale.md" "He go to school.\n"))))
+    (push buffer ltex-plus-live--buffers)
+    (with-current-buffer buffer
+      ;; Deliberately not `ltex-plus-live-open': no diagnostics are ever
+      ;; published, because the server is stopped before the configuration
+      ;; push that would lead to a check.
+      (let ((inhibit-message t))
+        (lsp-ltex-plus-mode 1))
+      (ltex-plus-live-until (lambda () (null (ltex-plus-live-workspace)))
+                            "the stale server to be stopped")
+      (should-not lsp-ltex-plus-mode))))
+
 ;; Shut the server down once, however the run ended.
 (add-hook 'kill-emacs-hook #'ltex-plus-live-teardown)
 

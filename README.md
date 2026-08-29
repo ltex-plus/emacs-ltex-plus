@@ -394,6 +394,7 @@ An empty space means the parameter has no direct counterpart at that layer: typi
 | Parameter | When applied | Per project | Description | Official LTeX+ Setting | Counterpart in LT Java Library |
 | :--- | :---: | :---: | :--- | :---: | :---: |
 | `lsp-ltex-plus-ls-plus-executable` | R |  | The name or path of the ltex-ls-plus executable. *Type:* string; *default:* `"ltex-ls-plus"`. | | |
+| `lsp-ltex-plus-require-minimum-server-version` | S |  | When non-nil (the default), stop the server if it reports a version older than 18.7.0, or none at all, and say why. Set to nil to keep using it; the warning still appears. Allowed, but not encouraged — some features will not work. *Type:* boolean; *default:* `t`. | | |
 | `lsp-ltex-plus-debug` | R |  | When non-nil, enable verbose logging and JSON-RPC tracing. *Type:* boolean; *default:* `nil`. | | |
 | `lsp-ltex-plus-major-modes` | S† |  | List of `(major-mode language-id programming-p)` triples driving client activation. *Type:* list; *default:* ~80 entries covering markup and programming modes (defined in `lsp-ltex-plus-bootstrap.el`). | | |
 | `lsp-ltex-plus-check-programming-languages` | A | X | When non-nil, enable grammar checking in comments of programming languages (disabled by default, matching LTeX+). *Type:* boolean; *default:* `nil`. | | |

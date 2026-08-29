@@ -132,6 +132,40 @@
   :type 'string
   :group 'lsp-ltex-plus)
 
+(defconst lsp-ltex-plus-minimum-server-version "18.7.0"
+  "Oldest `ltex-ls-plus' this package works against.
+
+Deliberately not a user option.  This is a fact about what the package
+requires, not a preference: making it settable would mostly offer a way
+to silence a real problem, and a silenced version mismatch reappears as
+a diagnostic that never arrives.
+
+An older server does not fail outright, it lacks features this package
+assumes, so falling short is reported rather than refused.
+
+Only the leading numbers are compared, so a pre-release such as
+\"18.7.1-alpha.32+2026-08-26.g7977ac67\" counts as 18.7.1.")
+
+(defcustom lsp-ltex-plus-require-minimum-server-version t
+  "Whether to refuse a server older than the recommended floor.
+
+`lsp-ltex-plus-minimum-server-version' is not a matter of taste: it is
+the oldest `ltex-ls-plus' this package is written against.  With this
+option at its default, `lsp-ltex-plus-mode' declines to start against
+anything older and says so, rather than running with features that
+quietly do not work.
+
+Setting it to nil is allowed, not encouraged.  Installing an older
+server is occasionally the only way round a bug in a newer one, and
+being pushed onto a broken release is no better than being held on a
+stale one -- which of the two you are facing is not something this
+package can tell.  So the escape hatch exists; taking it means some
+features may not work, and the version is still reported once.
+
+Nothing is refused when the version cannot be determined at all."
+  :type 'boolean
+  :group 'lsp-ltex-plus)
+
 (defcustom lsp-ltex-plus-debug nil
   "When non-nil, enable verbose logging and JSON-RPC tracing.
 Enabling this automatically sets `lsp-log-io' to t and creates
@@ -2105,6 +2139,80 @@ ever sees documents the user intended to check, and `ltex.enabled' is
 effectively a no-op by construction."
   (seq-uniq (mapcar #'cadr lsp-ltex-plus-major-modes) #'string=))
 
+(defun lsp-ltex-plus--installed-server-version ()
+  "Return the version the installed `ltex-ls-plus' reports, or nil.
+Runs the binary with `--version\=', which prints JSON:
+
+  {\"ltex-ls\": \"18.7.1-alpha.32+2026-08-26.g7977ac67\", \"java\": \"21.0.10\"}
+
+Used only when the running server did not report a version through the
+protocol; see `lsp-ltex-plus--enforce-server-version\='."
+  (when-let* ((executable (executable-find lsp-ltex-plus-ls-plus-executable)))
+    (with-temp-buffer
+      (when (ignore-errors
+              (eq 0 (call-process executable nil t nil "--version")))
+        (goto-char (point-min))
+        (when (re-search-forward
+               "\"ltex-ls\"[[:space:]]*:[[:space:]]*\"\\([^\"]+\\)\"" nil t)
+          (match-string 1))))))
+
+(defun lsp-ltex-plus--version-at-least-p (version minimum)
+  "Return non-nil when VERSION is MINIMUM or newer.
+Only the leading numeric part of VERSION is compared: a release carries
+build metadata (\"18.7.1-alpha.32+2026-08-26.g7977ac67\") that
+`version-to-list\=' cannot read.  A VERSION that is not a version string
+at all -- nil included -- is never new enough."
+  (and (stringp version)
+       (string-match "\\`\\([0-9]+\\(?:\\.[0-9]+\\)*\\)" version)
+       (not (version< (match-string 1 version) minimum))))
+
+(defun lsp-ltex-plus--shutdown-workspace (workspace)
+  "Stop WORKSPACE and switch `lsp-ltex-plus-mode\=' off in its buffers.
+Only this client is affected: co-tenants such as texlab or basedpyright
+have their own workspaces and are left running.  The mode is switched
+off first, because `:activation-fn\=' reads nothing else -- left on, it
+would invite `lsp-mode\=' to start the same server again."
+  (dolist (buffer (lsp--workspace-buffers workspace))
+    (when (lsp-buffer-live-p buffer)
+      (lsp-with-current-buffer buffer
+        (setq lsp-ltex-plus-mode nil))))
+  (with-demoted-errors "[lsp-ltex-plus] Error stopping the server: %S"
+    (lsp-workspace-shutdown workspace)))
+
+(defun lsp-ltex-plus--enforce-server-version (workspace)
+  "Stop WORKSPACE when the server it connected to is too old.
+
+The version comes from the `serverInfo\=' the server sent in its
+`initialize\=' response, which `lsp-ltex-plus--capture-server-info\='
+records where the installed `lsp-mode\=' exposes it.  Where it does not,
+the binary is asked instead.
+
+A version that cannot be determined at all counts as a failure rather
+than as a pass: the server answered the handshake, so it should have
+been able to say what it is, and something is wrong if it could not.
+
+Either way the user is told.  Whether the server is then stopped is up
+to `lsp-ltex-plus-require-minimum-server-version\='; opting out keeps it
+running, with the warning standing."
+  (let ((version (or lsp-ltex-plus--server-version
+                     (lsp-ltex-plus--installed-server-version)))
+        (stopping lsp-ltex-plus-require-minimum-server-version))
+    (unless (lsp-ltex-plus--version-at-least-p
+             version lsp-ltex-plus-minimum-server-version)
+      (message
+       (concat "[lsp-ltex-plus] "
+               (if version
+                   (format "ltex-ls-plus %s is older than %s, which this package needs."
+                           version lsp-ltex-plus-minimum-server-version)
+                 "Cannot determine the ltex-ls-plus version.")
+               (if stopping " Stopping the server." " Some features may not work.")
+               "  See https://github.com/ltex-plus/emacs-ltex-plus/#server-installation"
+               (when stopping
+                 (concat ", or set `lsp-ltex-plus-require-minimum-server-version'"
+                         " to nil to keep using it."))))
+      (when stopping
+        (lsp-ltex-plus--shutdown-workspace workspace)))))
+
 (defun lsp-ltex-plus--capture-server-info (workspace)
   "Store WORKSPACE's reported server name and version, if available.
 Reads the `serverInfo' the server returned in its `initialize' response
@@ -2304,6 +2412,11 @@ variable nil."
                       ;; exist but the fix has regressed or moved.
                       (lsp-ltex-plus--restore-completion-capability workspace)
                       (lsp-ltex-plus--capture-server-info workspace)
+                      ;; Checked here rather than before starting: the
+                      ;; version the running server reports is the
+                      ;; authoritative one, and it does not exist until
+                      ;; it has reported it.
+                      (lsp-ltex-plus--enforce-server-version workspace)
                       (lsp-ltex-plus--log "Server initialized; pushing configuration...")
                       ;; Object- and boolean-typed fields go through the
                       ;; `--obj-or-empty' / `--bool' helpers so `nil' serializes
@@ -2916,15 +3029,20 @@ silently."
               (push (list major-mode lang-id nil) lsp-ltex-plus-major-modes)
               ;; lsp-language-id-configuration uses plain cons pairs.
               (push (cons major-mode lang-id) lsp-language-id-configuration)))
-          (if (not (executable-find lsp-ltex-plus-ls-plus-executable))
-              (progn
-                (message
+          (cond
+           ((not (executable-find lsp-ltex-plus-ls-plus-executable))
+            (message
                  (concat "[lsp-ltex-plus] Aborting: %s not found on PATH.  "
                          "See installation instructions at "
                          "https://github.com/ltex-plus/emacs-ltex-plus/#server-installation "
                          "or set `lsp-ltex-plus-ls-plus-executable' to the absolute path of the binary.")
-                 lsp-ltex-plus-ls-plus-executable)
-                (setq lsp-ltex-plus-mode nil))
+             lsp-ltex-plus-ls-plus-executable)
+            (setq lsp-ltex-plus-mode nil))
+           ;; Decided before the server starts, and in the same shape as the
+           ;; check above: an unsupported server is a reason not to start,
+           ;; rather than something to discover later as a feature that
+           ;; quietly does nothing.
+           (t
             (lsp-ltex-plus--log "Enabling LTEX+ in %s" (buffer-name))
             (cond
              ;; lsp-mode not yet loaded — defensive, deferred startup.
@@ -3039,7 +3157,7 @@ silently."
              ;; full startup.
              (t
               (lsp-ltex-plus--log "Activation path: (lsp) (first startup)")
-              (lsp))))))
+              (lsp)))))))
     ;; Deactivation.  First detach comint input-region wiring (submit hook,
     ;; virtual-buffer connection) if this buffer opted into it; the shared
     ;; server tear-down below still runs.
