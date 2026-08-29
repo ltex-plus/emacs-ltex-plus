@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+
+## [0.5.1] - 2026-08-29
+
 ### Added
 - **An automated test suite.** `test/` holds ERT tests covering the client side of the protocol — the mode table and activation dispatcher, the three-tier storage behind the four language-keyed lists, per-document configuration replies, project-local lists and their modification-time cache, where an accepted suggestion is written and how the two-destination suggestion is split, the `:safe` declarations, the file-less and comint synthetic buffers, the client registration and its settings surface, what the minor mode decides before it reaches for a server, and Kind-First message routing. No `ltex-ls-plus` binary is started and nothing goes over a wire. Run them with `make test`, one file with `test/run-tests.sh project`, or one test with `test/run-tests.sh -s '"cache"'`; `make test-live` adds a further file that runs against a real `ltex-ls-plus`, covering what no mock can reach — the mode's startup and teardown, per-project languages and dictionaries as the server actually resolves them, file-less buffers, and the reload broadcast — and skips with a reason when the server is absent, too old, or the opt-in is unset; `make check` adds byte-compilation with `byte-compile-error-on-warn` and `checkdoc`. Each file runs in its own Emacs batch process, since two of them install global advice on `lsp-mode`. The suite finds `lsp-mode` by convention — a straight.el build tree or a package.el archive under the usual directories — with `LTEX_PLUS_LOAD_PATH` and `LTEX_PLUS_STRAIGHT_BUILD` as escape hatches, and redirects `user-emacs-directory` into a sandbox before anything is loaded so that a run can never read or write the real word lists. See `test/README.md`.
 
