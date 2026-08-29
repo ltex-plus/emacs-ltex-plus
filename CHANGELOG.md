@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- **An automated test suite.** `test/` holds ERT tests covering the client side of the protocol — the mode table and activation dispatcher, the three-tier storage behind the four language-keyed lists, per-document configuration replies, project-local lists and their modification-time cache, where an accepted suggestion is written and how the two-destination suggestion is split, the `:safe` declarations, the file-less and comint synthetic buffers, the client registration, and Kind-First message routing. No `ltex-ls-plus` binary is started and nothing goes over a wire. Run them with `make test`, one file with `test/run-tests.sh project`, or one test with `test/run-tests.sh -s '"cache"'`; `make check` adds byte-compilation with `byte-compile-error-on-warn` and `checkdoc`. Each file runs in its own Emacs batch process, since two of them install global advice on `lsp-mode`. The suite finds `lsp-mode` by convention — a straight.el build tree or a package.el archive under the usual directories — with `LTEX_PLUS_LOAD_PATH` and `LTEX_PLUS_STRAIGHT_BUILD` as escape hatches, and redirects `user-emacs-directory` into a sandbox before anything is loaded so that a run can never read or write the real word lists. See `test/README.md`.
+
 ### Fixed
 - **`lsp-ltex-plus--kind-for-command` no longer claims an action that carries no command name.** `enabled-rules` has a nil `:command` — no suggestion writes to that list — and the lookup compared with `equal`, so a nil command name matched it. A code action from another server whose command object omits its name would then have been treated as one of this package's own: in a project keeping an enabled-rules file it would have been split into two variants with a nil title. Found by the new test suite.
 

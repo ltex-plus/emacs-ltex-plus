@@ -1,0 +1,3 @@
+# Byte-compilation output. `make compile` writes to a temp directory, but
+# compiling by hand from Emacs lands these next to the sources.
+*.elc

@@ -2,6 +2,10 @@
 
 This directory contains scripts used during development and maintenance of `lsp-ltex-plus`. They are **not** intended for end users; you do not need to run anything here to use the package.
 
+The automated tests live in `../test/` — run them with `make test`. What
+stays here are the probes that cannot run offline: they need a live
+`ltex-ls-plus` server, a checkout of its source, or the MELPA archive.
+
 ## Scripts
 
 - **`probe_rules.bash`** — interrogates a running `ltex-ls-plus` server to enumerate the rule IDs it currently advertises. Used to keep `is_proposed_unknown_word_rule` in `lsp-ltex-plus.el` aligned with upstream when ltex-ls-plus renames or adds rules.
