@@ -3,7 +3,9 @@
 ERT tests for `lsp-ltex-plus`. Nothing here is needed to use the package.
 
 ```sh
-make test                      # everything
+make test                      # everything; the live tests report as skipped
+make test-live                 # the same, with a real ltex-ls-plus
+make live-repl                 # a daemon with the live fixture, for debugging
 test/run-tests.sh project      # files whose name contains "project"
 test/run-tests.sh -s "\"cache\""   # an ERT selector
 ```
@@ -13,9 +15,46 @@ Each file runs in its own Emacs batch process. That is not tidiness:
 global advice on `lsp-mode`, and `ltex-plus-additions-test.el` overrides
 `lsp-notify`. Sharing one process would make results depend on load order.
 
-No `ltex-ls-plus` binary is involved and no server is started. Everything
-under test is on the client side of the protocol, and the two request
-handlers are ordinary functions of `(WORKSPACE PARAMS)`.
+No `ltex-ls-plus` binary is involved and no server is started, except in
+`ltex-plus-live-test.el` — see **Live tests** below.
+
+## Live tests
+
+`make test-live` runs `ltex-plus-live-test.el` against a real server.
+Without the opt-in — or on a machine with no `ltex-ls-plus`, or one older
+than `ltex-plus-live-server-floor` — every test in it reports as
+*skipped* with the reason, rather than being invisible.
+
+The whole file costs about twenty seconds, nearly all of it one JVM
+start: `lsp-keep-workspace-alive` holds the server up between tests, so
+each document after the first is tens of milliseconds. That is why there
+is no daemon here; a daemon would save the half-second of Emacs startup
+and give back the shared state that one process per file exists to
+avoid. `make live-repl` starts one anyway — for poking at a failing test
+by hand, which is a different job.
+
+Three things a batch Emacs needs before `lsp-mode` will work at all, all
+set by `ltex-plus-live-configure`:
+
+- **`lsp-mode`'s autoloads must be loaded.** `emacs -Q` loads none, so
+  `lsp-configure-buffer` dies on `void-function lsp-lens--enable` — and
+  the first such failure is swallowed by `with-demoted-errors`, so it
+  surfaces later and somewhere else.
+- **`lsp-debounce-full-sync-notifications` must be nil.** Otherwise
+  `didChange` is deferred to a `run-with-idle-timer`, and a batch Emacs
+  never goes idle: idle time is measured from the last input event and
+  there are none. The edit never reaches the server.
+- **The prompts must be answered in advance** — `lsp-auto-guess-root`,
+  `lsp-restart`, `lsp-warn-no-matched-clients` — since there is no stdin
+  to answer them from and an unset one hangs rather than fails.
+
+And two rules for the tests themselves. Wait on a predicate with a
+deadline (`ltex-plus-live-until`), never on a duration. And never read
+"no diagnostics" as an answer: it is indistinguishable from "not checked
+yet", so anything asserting an absence goes through
+`ltex-plus-live-after-publish`, which waits for the server to speak about
+*that document* — counting publishes globally is not enough, and that is
+not hypothetical, it is what the first run of this file did.
 
 ## Finding `lsp-mode`
 
@@ -61,6 +100,7 @@ that have nothing to do with the code under test.
 | `ltex-plus-setup-test.el` | The client registration, the settings surface (the push and the pull describing the same settings), the gated advice bodies, and that re-running setup never installs an advice twice |
 | `ltex-plus-mode-test.el` | What the minor mode decides before it reaches for a server: the programming-language guard, registering an unseen major mode, and giving up when the binary is missing |
 | `ltex-plus-patch-test.el` | Kind-First routing: a server request with a colliding id stays a request |
+| `ltex-plus-live-test.el` | Opt-in, against a real server: the whole pipeline, per-project language and dictionaries, file-less buffers, teardown, and the reload broadcast |
 
 ## What is deliberately not covered
 

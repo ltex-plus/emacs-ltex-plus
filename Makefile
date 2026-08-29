@@ -1,7 +1,9 @@
 # Development targets for lsp-ltex-plus.  None of this is needed to *use*
 # the package; it is what a maintainer runs before tagging a release.
 #
-#   make test       run the ERT suite (test/)
+#   make test       run the ERT suite (test/); live tests skip
+#   make test-live  the same, with the tests that need a real ltex-ls-plus
+#   make live-repl  a daemon with the live fixture loaded, for debugging
 #   make compile    byte-compile the two package files, warnings and all
 #   make checkdoc   docstring conventions
 #   make lint       package-lint, as MELPA runs it
@@ -27,7 +29,7 @@ LOAD_DEPENDENCIES := --eval '(progn \
   (add-to-list (quote load-path) (expand-file-name "test")) \
   (load "ltex-plus-test-helper" nil t))'
 
-.PHONY: all check test compile checkdoc lint clean
+.PHONY: all check test test-live live-repl compile checkdoc lint clean
 
 all: check
 
@@ -35,6 +37,28 @@ check: compile checkdoc test
 
 test:
 	@test/run-tests.sh
+
+# Starts a real server, so it needs `ltex-ls-plus' on PATH; the live
+# tests report as skipped without it, and without this target's opt-in.
+# One JVM serves the whole file -- about 20 seconds in total.
+test-live:
+	@LTEX_PLUS_LIVE=1 test/run-tests.sh
+
+# For working on a live test that fails: a daemon with the fixture
+# already loaded, so the session can be poked at from `emacsclient'
+# instead of being reconstructed from a batch backtrace.  Kill it with
+# `emacsclient -s ltex-test -e "(kill-emacs)"'.
+live-repl:
+	@LTEX_PLUS_LIVE=1 $(EMACS) --daemon=ltex-test \
+	  --eval '(progn \
+	            (add-to-list (quote load-path) "$(CURDIR)") \
+	            (add-to-list (quote load-path) "$(CURDIR)/test") \
+	            (require (quote ltex-plus-live-helper)) \
+	            (ltex-plus-live-configure))'
+	@echo 'Daemon "ltex-test" is up. Try:'
+	@echo '  emacsclient -s ltex-test -e "(ltex-plus-live-open (ltex-plus-live-write \"x.md\" \"He go home.\\n\"))"'
+	@echo '  emacsclient -s ltex-test -e "(ltex-plus-live-messages)"'
+	@echo '  emacsclient -s ltex-test -e "(kill-emacs)"'
 
 # Byte-compilation is a check in its own right: it is what catches a free
 # variable, a call with the wrong number of arguments, or a docstring that

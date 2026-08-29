@@ -97,7 +97,24 @@ hand-kept subset."
         (when (file-directory-p dir)
           (add-to-list 'load-path dir))))))
 
+(defun ltex-plus-test--load-lsp-mode-autoloads ()
+  "Load `lsp-mode''s autoloads, as an installed Emacs would.
+`emacs -Q' loads no package autoloads, so every optional `lsp-mode'
+feature stays unbound -- and `lsp-configure-buffer' calls several of
+them by name.  A live workspace then dies on `void-function
+lsp-lens--enable', and the first such failure is swallowed by
+`with-demoted-errors' inside the message handler, so it surfaces later
+and somewhere else.  Loading the autoloads is what an installed session
+does, and costs nothing here."
+  (catch 'done
+    (dolist (dir load-path)
+      (let ((autoloads (expand-file-name "lsp-mode-autoloads.el" dir)))
+        (when (file-exists-p autoloads)
+          (load autoloads nil t)
+          (throw 'done t))))))
+
 (ltex-plus-test--add-dependencies)
+(ltex-plus-test--load-lsp-mode-autoloads)
 
 (require 'lsp-mode)
 
