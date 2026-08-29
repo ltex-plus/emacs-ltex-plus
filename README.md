@@ -396,9 +396,9 @@ An empty space means the parameter has no direct counterpart at that layer: typi
 | `lsp-ltex-plus-ls-plus-executable` | R |  | The name or path of the ltex-ls-plus executable. *Type:* string; *default:* `"ltex-ls-plus"`. | | |
 | `lsp-ltex-plus-debug` | R |  | When non-nil, enable verbose logging and JSON-RPC tracing. *Type:* boolean; *default:* `nil`. | | |
 | `lsp-ltex-plus-major-modes` | S† |  | List of `(major-mode language-id programming-p)` triples driving client activation. *Type:* list; *default:* ~80 entries covering markup and programming modes (defined in `lsp-ltex-plus-bootstrap.el`). | | |
-| `lsp-ltex-plus-check-programming-languages` | L† | X | When non-nil, enable grammar checking in comments of programming languages (disabled by default, matching LTeX+). *Type:* boolean; *default:* `nil`. | | |
-| `lsp-ltex-plus-check-fileless-buffers` | S† | X | When non-nil, also check buffers with no backing file (e.g. `*scratch*`, capture buffers); all such buffers share one `ltex-ls-plus` process. See [Checking file-less buffers](#checking-file-less-buffers). *Type:* boolean; *default:* `t`. | | |
-| `lsp-ltex-plus-check-comint-input` | S† | X | When non-nil, check the active input region of `comint-mode` buffers (shells, REPLs, agent shells) — only what you are currently typing, never the output or earlier input. See [Checking comint input](#checking-comint-input-shells-repls-agent-shells). *Type:* boolean; *default:* `t`. | | |
+| `lsp-ltex-plus-check-programming-languages` | A | X | When non-nil, enable grammar checking in comments of programming languages (disabled by default, matching LTeX+). *Type:* boolean; *default:* `nil`. | | |
+| `lsp-ltex-plus-check-fileless-buffers` | A | X | When non-nil, also check buffers with no backing file (e.g. `*scratch*`, capture buffers); all such buffers share one `ltex-ls-plus` process. See [Checking file-less buffers](#checking-file-less-buffers). *Type:* boolean; *default:* `t`. | | |
+| `lsp-ltex-plus-check-comint-input` | A | X | When non-nil, check the active input region of `comint-mode` buffers (shells, REPLs, agent shells) — only what you are currently typing, never the output or earlier input. See [Checking comint input](#checking-comint-input-shells-repls-agent-shells). *Type:* boolean; *default:* `t`. | | |
 | `lsp-ltex-plus-language` | L | X | The language LanguageTool should check against (e.g. `"en-US"`, `"de-DE"`). Valid codes are listed on the [LTeX+ supported-languages page](https://ltex-plus.github.io/ltex-plus/supported-languages.html); `"auto"` attempts language detection (not recommended — no spelling). *Type:* string; *default:* `"en-US"`. | X | X |
 | `lsp-ltex-plus-dictionary` | L | X | Additional words accepted as correctly spelled (language-specific). *Type:* plist; *default:* `nil`. See [External settings](#external-settings) for format and behaviour. | X | |
 | `lsp-ltex-plus-enabled-rules` | L | X | Language-specific list of rules to enable. *Type:* plist; *default:* `nil`. See [External settings](#external-settings). | X | X |
@@ -444,14 +444,9 @@ An empty space means the parameter has no direct counterpart at that layer: typi
 > - **L** — *Live*: read by the client at the moment it is needed — on every `workspace/configuration` pull, which the server issues before each diagnostic publish, or (for `lsp-ltex-plus-save-additions-to`) at the moment you accept a suggestion. A plain `setq` is honoured straight away — no manual notification, no restart.
 > - **R** — *Requires server restart*: the server reads the value at JVM init only. Change the variable, then run `M-x lsp-workspace-restart` for it to take effect.
 > - **S** — *Setup-only*: wired once, the first time a supported buffer is opened in the Emacs session — installed via `advice-add` or baked into the client registration. Changing the variable later with `setq` or `customize-set-variable` does not re-apply it on its own; run `M-x lsp-ltex-plus-reload-settings` afterwards. For a setting baked into the registration (`lsp-ltex-plus-multi-root` above all) that reaches only workspaces started afterwards, since a running one holds its own copy — restart the workspace for those.
+> - **A** — *Activation-time*: read when `lsp-ltex-plus-mode` turns on in a buffer — neither on every check nor once at setup. A buffer already being checked keeps the value it started with; newly opened buffers, and ones where you toggle the mode off and on again, see the new one. No reload or restart is involved.
 >
 > **†** on `lsp-ltex-plus-major-modes` — this is a registry, not a customization knob. It is listed here for reference because the client reads from it, but users should not mutate it directly. To adjust which modes the dispatcher activates on, call `lsp-ltex-plus-enable-for-modes` with its `:restrict-to`, `:exclude`, and `:extend-to` keyword arguments (see [Customizing Supported Modes](#customizing-supported-modes)).
->
-> **†** on `lsp-ltex-plus-check-programming-languages` — re-read at every buffer (re-)activation rather than on every check. Already-active buffers are unaffected by a mid-session flip; newly opened or toggled buffers see the new value.
->
-> **†** on `lsp-ltex-plus-check-fileless-buffers` — gates the dispatcher and the mode body at activation time, not on every check. Already-active buffers are unaffected by a mid-session flip; newly opened or toggled file-less buffers see the new value.
->
-> **†** on `lsp-ltex-plus-check-comint-input` — gates the mode body at activation time, not on every check. Already-active comint buffers are unaffected by a mid-session flip; newly opened or toggled ones see the new value.
 
 </details>
 
