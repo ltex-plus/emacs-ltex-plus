@@ -354,7 +354,7 @@ https://ltex-plus.github.io/ltex-plus/advanced-usage.html#hiding-false-positives
 This setting is an object with the field names as keys and Booleans as values,
 where true means that the field value should be checked and false means that
 the field value should be ignored.  Field names are listed as symbols
-(e.g., `title')."
+\(e.g., `title')."
   :type 'alist
   :safe #'lsp-ltex-plus--symbol-keyed-alist-p
   :group 'lsp-ltex-plus)
@@ -1500,8 +1500,9 @@ requested item is answered from the buffer its `scopeUri' names rather
 than from an arbitrary buffer of the workspace.  Other servers running
 alongside this one are unaffected: request handlers are per-client.
 
-PARAMS carries `items', a vector of `(scopeUri URI, section SECTION)'.
-The reply is a vector of settings objects, one per item, in order."
+WORKSPACE is the ltex-ls-plus workspace that asked; PARAMS carries
+`items', a vector of `(scopeUri URI, section SECTION)'.  The reply is a
+vector of settings objects, one per item, in order."
   (lsp-ltex-plus--log "workspace/configuration request: %S" params)
   (vconcat
    (seq-map (lambda (item)
@@ -1539,7 +1540,8 @@ those four settings from here alone and ignores whatever the standard
 `workspace/configuration' reply said about them, which is why this is
 the handler that decides which dictionary a document is checked against.
 
-Each item is answered from the buffer its `scopeUri' names; see
+WORKSPACE is the ltex-ls-plus workspace that asked.  Each item is
+answered from the buffer its `scopeUri' names; see
 `lsp-ltex-plus--call-in-document-context'.
 
 PARAMS may arrive as either a plist (when `lsp-use-plists' is non-nil)
@@ -2725,7 +2727,7 @@ diagnostic clean-up are handled by the shared deactivation path in
 (defun lsp-ltex-plus--synthetic-buffer-for-uri (uri)
   "Return the synthetic ltex-plus virtual buffer whose document URI is URI.
 \"Synthetic\" means a file-less or comint buffer set up by this package
-(`lsp-ltex-plus--fileless-uri' non-nil): its URI maps to no visiting
+\(`lsp-ltex-plus--fileless-uri' non-nil): its URI maps to no visiting
 buffer, so `lsp-mode''s URI->buffer resolution cannot find it.  Returns the
 `lsp--virtual-buffer' plist (ready for `lsp-with-current-buffer'), or nil."
   (and uri
@@ -2752,6 +2754,10 @@ Handles both the `documentChanges' shape (used by LTEX+) and the simpler
 
 (defun lsp-ltex-plus--apply-workspace-edit-advice (orig workspace-edit &optional operation)
   "Route a WorkspaceEdit aimed at a synthetic ltex-plus buffer to that buffer.
+ORIG is the advised function, WORKSPACE-EDIT the edit it was given, and
+OPERATION its own second argument, both passed through untouched when the
+edit is not ours.
+
 `lsp-mode' resolves a WorkspaceEdit's target buffer from the document URI
 with `find-file-noselect'/`find-buffer-visiting'.  Our file-less and comint
 buffers carry a synthetic file:// URI that visits no buffer, so the lookup
