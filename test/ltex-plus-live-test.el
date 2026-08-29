@@ -279,14 +279,12 @@ order wrong leaves the server holding a document that no longer exists,
 or reconnects before the close is sent -- neither of which shows up
 offline, where nothing is connected to notice.
 
-What this does NOT cover, because it does not currently happen:
-`lsp-ltex-plus--fileless-on-save' never runs.  Saving re-runs the major
-mode, which discards buffer-local variables including the buffer-local
-hook entry the handler was added to, so the synthetic document is never
-closed and the server keeps it open under a URI nothing will update
-again.  Asserting `lsp-ltex-plus--fileless-uri' is nil afterwards looks
-like evidence that the handler ran and is not: the same major-mode
-change clears that variable by itself.
+That the handler ran is asserted directly, by watching it.  Its effect
+cannot be used as evidence: it clears
+`lsp-ltex-plus--fileless-uri', and so does the major-mode change that
+saving triggers, so the variable is nil either way.  That is not
+hypothetical -- the handler was silently never running, and an
+assertion on the variable passed throughout.
 
 The dispatcher is installed here for a related reason: saving under a new name re-runs the major mode, and that discards
 buffer-local variables, `lsp-ltex-plus-mode' among them.  What turns the
@@ -299,9 +297,14 @@ the buffer go quiet and looks like a broken handover."
   (let ((after-change-major-mode-hook after-change-major-mode-hook)
         (lsp-ltex-plus--enabled-modes lsp-ltex-plus--enabled-modes)
         (buffer (generate-new-buffer "*ltex-plus-live-draft*"))
-        (path (expand-file-name "saved-draft.md" (ltex-plus-live-root))))
+        (path (expand-file-name "saved-draft.md" (ltex-plus-live-root)))
+        (handed-over nil))
     (lsp-ltex-plus-enable-for-modes)
     (push buffer ltex-plus-live--buffers)
+    (advice-add 'lsp-ltex-plus--fileless-on-save :before
+                (lambda (&rest _) (setq handed-over t))
+                '((name . ltex-plus-live-watch)))
+    (unwind-protect
     (with-current-buffer buffer
       (text-mode)
       (insert "He go to school.\n")
@@ -324,7 +327,23 @@ the buffer go quiet and looks like a broken handover."
                       (mapcar (lambda (workspace)
                                 (file-name-as-directory
                                  (lsp--workspace-root workspace)))
-                              lsp--buffer-workspaces))))))
+                              lsp--buffer-workspaces)))
+      ;; The handler itself ran -- the part that closes the synthetic
+      ;; document, and the part nothing else would have revealed.
+      (should handed-over)
+      ;; It leaves the buffer alone on a later rename.  It stays on the
+      ;; hook (lsp-managed-mode re-adds lsp-mode's entry alongside it), so
+      ;; a second `set-visited-file-name' calls it again -- on a buffer
+      ;; that has a real file and no synthetic identity left to drop.
+      (let ((renamed (expand-file-name "renamed-draft.md"
+                                       (ltex-plus-live-root)))
+            (inhibit-message t))
+        (write-file renamed)
+        (should (equal (buffer-file-name) renamed))
+        (should (equal (lsp--uri-to-path (lsp--buffer-uri)) renamed))
+        (ltex-plus-live-until (lambda () (ltex-plus-live-diagnostics))
+                              "the re-check after renaming")))
+      (advice-remove 'lsp-ltex-plus--fileless-on-save 'ltex-plus-live-watch))))
 
 ;;;; -- Turning the mode off ----------------------------------------------------
 

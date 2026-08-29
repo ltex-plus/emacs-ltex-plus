@@ -2611,6 +2611,23 @@ synthetic document."
     (remove-hook 'after-set-visited-file-name-hook
                  #'lsp-ltex-plus--fileless-on-save t)))
 
+;; Without this the handler above never runs.  `set-visited-file-name'
+;; re-runs the major mode (`set-auto-mode') a few lines before it runs
+;; `after-set-visited-file-name-hook', and re-running a major mode
+;; discards the buffer's local variables -- a buffer-local hook among
+;; them.  So saving `*scratch*' to a file removed the handler and then
+;; called the hook it had been removed from.  A hook member carrying
+;; `permanent-local-hook' survives `kill-all-local-variables', which is
+;; what this property is for.
+;;
+;; Nothing visible went wrong when it did not run: the buffer still
+;; reconnected under its real name, because the same major-mode change
+;; makes the activation dispatcher switch `lsp-ltex-plus-mode' back on.
+;; What was lost is the `didClose' for the synthetic document, so the
+;; server kept one open per saved buffer, under a URI nothing would ever
+;; update or close.
+(put 'lsp-ltex-plus--fileless-on-save 'permanent-local-hook t)
+
 ;;;; -- Comint input-region support --------------------------------------------
 ;;
 ;; A comint buffer (shell, REPL, `agent-shell-mode', …) is mostly read-only
