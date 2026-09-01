@@ -46,9 +46,17 @@ COMPILE_SETUP := --eval '(progn \
                             ltex-out))))'
 
 # Docstring conventions, exiting non-zero on any finding (see `checkdoc').
+# Both flags are set rather than left at their defaults, so the target
+# reports the same thing on every Emacs.  The experimental verb check
+# defaults to t up to Emacs 30 and nil from 31, and it looks for its verbs
+# anywhere in the first sentence rather than at the front: it reads the
+# noun in "Apply changes to ..." and the relative clauses in "Return a copy
+# ... that saves to TARGET" as the docstring's own verb, and asks for the
+# imperative.  Upstream turning it off by default is upstream agreeing.
 CHECKDOC_RUN := --eval '(progn \
   (require (quote checkdoc)) \
   (setq checkdoc-force-docstrings-flag nil) \
+  (setq checkdoc-verb-check-experimental-flag nil) \
   (dolist (file (list $(foreach f,$(PACKAGE_FILES),"$(f)"))) \
     (checkdoc-file file)) \
   (if (get-buffer "*Warnings*") \
