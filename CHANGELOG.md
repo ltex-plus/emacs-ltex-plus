@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+
+## [0.6.0] - 2026-09-01
+
 ### Changed
 - **The minimum Emacs version is now 29.1**, up from 27.1. It is not a choice this package made: `lsp-mode` requires 29.1, so no installable dependency set existed below that and the old floor could not be honoured or tested. Nothing in the package's own code needed 27.1 support removed; the tree-sitter `fboundp` guards stay as they are, since `package-lint` wants one on any symbol introduced after the declared minimum and the 30.1 modes are still guarded either way.
 - **The minimum `lsp-mode` version is now 10.0.0**, up from 6.0, which had not described reality for a long time. 10.0.0 is the highest version that can be declared rather than the version the package is written against: `Package-Requires` can only name a release, and `lsp-mode`'s latest release (10.0.0, 2026-04-03) predates commit `0951bf38` — which carries five protocol fixes this client depends on — by six weeks. Anyone installing `lsp-mode` from MELPA or from git already has them. The README now says so where it explains the recommended revision, and `lsp-ltex-plus-apply-kind-first-patch` therefore stays: the condition documented for its removal is a declared minimum past `0951bf38`, and no such release exists.
