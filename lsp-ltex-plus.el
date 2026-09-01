@@ -4,7 +4,7 @@
 ;; Maintainer: Andrea Alberti <a.alberti82@gmail.com>
 ;; Assisted-by: Claude:claude-opus-4-7
 ;; Version: 0.5.1
-;; Package-Requires: ((emacs "27.1") (lsp-mode "6.0"))
+;; Package-Requires: ((emacs "29.1") (lsp-mode "6.0"))
 ;; Keywords: lsp, grammar, spelling, convenience
 ;; URL: https://github.com/ltex-plus/emacs-ltex-plus
 
@@ -2531,7 +2531,7 @@ synthetic path well-formed — the wire language ID still comes from the
 `:language-id' lambda in `lsp-register-client'."
   ;; Plain `setq'/`1+' rather than `cl-incf': `cl-incf' is deprecated in
   ;; favour of the built-in `incf' added in Emacs 31.1, but `incf' does not
-  ;; exist on our 27.1 floor, so neither macro is portable here.
+  ;; exist on our 29.1 floor, so neither macro is portable here.
   (lsp--path-to-uri
    (expand-file-name (format "lsp-ltex-plus-scratch-%d-%d.txt"
                              (emacs-pid)

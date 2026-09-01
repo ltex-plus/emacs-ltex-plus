@@ -5,9 +5,8 @@
 # JVM, and they skip on their own when `LTEX_PLUS_LIVE' is unset.  Run
 # them locally with `make test-live' before tagging a release.
 #
-# The matrix starts at 29.1 because that is what `lsp-mode' requires.
-# The package header still says 27.1, which no current `lsp-mode' can be
-# installed alongside -- so that claim is untested rather than upheld.
+# The matrix starts at 29.1, which is the package's declared floor and
+# also what `lsp-mode' requires.
 
 name: CI
 

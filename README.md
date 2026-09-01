@@ -7,7 +7,7 @@
 
 `lsp-ltex-plus` is a lightweight [lsp-mode](https://github.com/emacs-lsp/lsp-mode) client for **LTeX+**, a powerful grammar and spell checker powered by [LanguageTool](https://languagetool.org/).
 
-*Developed and tested on Emacs 31.1. Requires Emacs 27.1 or later.*
+*Developed and tested on Emacs 31.1. Requires Emacs 29.1 or later.*
 
 This package allows you to have professional-grade grammar checking in Emacs while you write Markdown, LaTeX, Org-mode, Magit-commit messages, and more — and also checks grammar and spelling inside comments and string literals of 30+ programming languages. It is designed to be an "add-on" server, meaning it runs quietly in the background alongside your existing language servers without interfering with them. With the local backend, checks typically complete fast enough to feel instant while you type — see [Performance](#performance) for measured numbers and a reproducible benchmark.
 
@@ -64,7 +64,7 @@ Two caveats worth stating honestly:
 
 Before using this package, you need:
 
-1.  **Emacs:** Version **27.1** or later. Tree-sitter major modes (`bash-ts-mode`, `python-ts-mode`, …) are picked up automatically when running on Emacs 29.1+/30.1+; on older Emacs they are silently skipped.
+1.  **Emacs:** Version **29.1** or later — the floor is set by `lsp-mode`, which requires it. Tree-sitter major modes (`bash-ts-mode`, `python-ts-mode`, …) are picked up automatically when the running Emacs has them; the 30.1 ones are skipped on 29.x.
 2.  **Emacs lsp-mode:** This package is an extension for `lsp-mode` (version 6.0 or higher). Therefore, `lsp-mode` must be installed and available before `lsp-ltex-plus` can function. We strongly recommend a recent build; see [Recommended `lsp-mode` Revision](#recommended-lsp-mode-revision) below.
 3.  **LTeX+ Language Server:** This is the core engine that performs the grammar checks. The recommended version is 18.7+. See [Server Installation](#server-installation) below on how to install it.
 4.  **Java:** LTeX+ requires **Java 21** or higher. Most platform-specific releases of LTeX+ include a bundled Java runtime, so you don't necessarily need to install it separately. See [Java Runtime Configuration](#3-java-runtime-configuration) for details.

@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Changed
+- **The minimum Emacs version is now 29.1**, up from 27.1. It is not a choice this package made: `lsp-mode` requires 29.1, so no installable dependency set existed below that and the old floor could not be honoured or tested. Nothing in the package's own code needed 27.1 support removed; the tree-sitter `fboundp` guards stay as they are, since `package-lint` wants one on any symbol introduced after the declared minimum and the 30.1 modes are still guarded either way.
+
+### Added
+- **Continuous integration.** `.github/workflows/ci.yml` runs `make check` — byte-compilation with `byte-compile-error-on-warn`, `checkdoc`, and the offline ERT suite — on every push to `main` and every pull request, across Emacs 29.1, 29.4, 30.1 and snapshot, with only snapshot allowed to fail. The live tests stay out of CI: they need a real `ltex-ls-plus` and a JVM, and skip on their own without `LTEX_PLUS_LIVE`, so `make test-live` remains a local release step.
+
+### Fixed
+- **A document whose buffer has been killed is no longer answered with another project's settings.** The per-document configuration handlers resolve the URI the server names to its buffer. When that lookup found nothing they read the settings from the workspace root instead — and under `lsp-ltex-plus-multi-root` (the default) that root is whichever project opened first in the session, not the document's. The lookup misses only when the buffer has been killed between the check starting and the pull arriving, in which case the server publishes diagnostics for a document nothing displays and the answer cannot be observed; there was nothing for the fallback to salvage and one clear way for it to be wrong. It is gone, and such a document is answered with the global settings. The lookup itself now matches the file name directly rather than searching: the URI the server quotes back is the one `lsp-mode` built from that file name and the conversion round-trips unchanged, so an exact match always finds an open buffer, without touching the file system — which also removed the only way it could fail, and with it the `ignore-errors` wrapped around it.
+- **A server binary that cannot be run is now reported.** The `--version` probe ran the binary inside `ignore-errors`, which caught everything and said nothing. `executable-find` checks only that the executable bit is set, so a wrong-architecture binary, a truncated download, or a script whose interpreter is missing all reach the probe and fail there — and the caller's message, that no version could be determined, points at none of them. The probe now catches `file-error` alone and names the file and the reason; anything else propagates rather than being turned into a missing version. A binary that runs but prints nothing parseable stays quiet, since there is nothing on disk to fix.
+
 
 ## [0.5.1] - 2026-08-29
 

@@ -56,11 +56,13 @@
   ;;
   ;; Entries for modes that ship with newer Emacs (mainly tree-sitter modes
   ;; introduced in 29.1 / 30.1) are appended below via per-symbol `fboundp'
-  ;; guards.  This keeps the package's minimum-Emacs floor at 27.1 while
-  ;; still picking up the newer modes when the user is on a recent Emacs
-  ;; (or has the matching third-party package installed on an older one).
+  ;; guards, so a mode is picked up when the running Emacs has it and
+  ;; skipped when it does not.  The floor is 29.1, so the 29.1 modes are in
+  ;; practice always present; their guards are kept because `package-lint'
+  ;; asks for one on any symbol introduced after the declared minimum, and
+  ;; because a guard costs nothing to leave in place.
   (append
-   ;; Always available (Emacs 27.1+, or long-standing third-party MELPA
+   ;; Always available (Emacs 29.1+, or long-standing third-party MELPA
    ;; packages).
    ;;
    ;; Markup languages (PROGRAMMING-P = nil)
