@@ -218,11 +218,11 @@ workspace, which a batch test has none of, so the mapping registered in
 The two handlers take (WORKSPACE PARAMS) and need no live process, but
 they do run inside `with-lsp-workspace\=', where `lsp--uri-to-path\='
 reaches for the workspace\='s client to look up a `uri->path\=' function.
-A workspace built without one therefore resolves no URI at all -- and
-because `lsp-ltex-plus--buffer-for-uri\=' wraps that lookup in
-`ignore-errors\=', the failure shows up only as every document being
-answered from the wrong buffer.  So the fixture carries the real
-registered client, exactly as a live session would."
+A workspace built without one signals `wrong-type-argument\=' there, so
+the fixture carries the real registered client, exactly as a live
+session would.  It used to fail silently instead, with every document
+answered from the wrong buffer, because the lookup was wrapped in
+`ignore-errors\='; that wrapper is gone."
   (make-lsp--workspace
    :root root
    :client (gethash 'ltex-ls-plus lsp-clients)))

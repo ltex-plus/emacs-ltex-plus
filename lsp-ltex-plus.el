@@ -1483,12 +1483,21 @@ Anything else passes through untouched, and the sequence type is kept."
 
 (defun lsp-ltex-plus--buffer-for-uri (uri)
   "Return the buffer whose LSP document URI is URI, or nil.
-Buffers visiting a real file are found through Emacs' own file-to-buffer
-index.  File-less and comint buffers visit no file and instead carry a
-synthetic URI in `lsp-buffer-uri' (see `lsp-ltex-plus--make-fileless-uri'),
-so they are located by scanning for the marker this package sets on them."
+A buffer visiting a real file is found by its file name.  That is an
+exact match rather than a search, and it is enough: the URI the server
+quotes back is the one `lsp-mode' built from this very file name, and
+the conversion round-trips unchanged (spaces, non-ASCII, symlinked
+parents and all).  So while the buffer is open this always finds it,
+without touching the file system -- which also means nothing here can
+fail, over TRAMP or otherwise.
+
+File-less and comint buffers visit no file and carry a synthetic URI in
+`lsp-buffer-uri' instead (see `lsp-ltex-plus--make-fileless-uri'), so
+they are found by scanning for the marker this package sets on them.
+
+Returning nil therefore means one thing only: the buffer is gone."
   (when uri
-    (or (ignore-errors (find-buffer-visiting (lsp--uri-to-path uri)))
+    (or (get-file-buffer (lsp--uri-to-path uri))
         (seq-find (lambda (buf)
                     (with-current-buffer buf
                       (and lsp-ltex-plus--fileless-uri
@@ -1500,20 +1509,22 @@ so they are located by scanning for the marker this package sets on them."
 WORKSPACE is made the active workspace throughout, mirroring what
 `lsp-mode' does around its own configuration responder.
 
-When URI resolves to no live buffer — it was killed between the check
-starting and the pull arriving — fall back to a temporary buffer under
-the workspace root with directory-local variables applied, so a project's
-settings still answer for its own documents.  Workspaces holding only
-file-less buffers have no root; there FN runs in the current buffer,
-which leaves the global values in force.  That is the right answer for a
-scratch or comint buffer, since it belongs to no project."
+URI resolves to no buffer only when that buffer was killed between the
+check starting and the pull arriving (see
+`lsp-ltex-plus--buffer-for-uri').  The server will finish that check and
+publish diagnostics for a document nothing displays, so the answer
+cannot be observed; the reply merely has to carry one entry per item the
+server asked about.  FN therefore runs in a buffer with no file name,
+which is the plain global configuration.
+
+It must not fall back to the workspace root, which was how this once
+worked: under `lsp-ltex-plus-multi-root' that root is whichever project
+opened first in the session, so a document would have been answered with
+an unrelated project's dictionary and language."
   (with-lsp-workspace workspace
-    (let ((buffer (lsp-ltex-plus--buffer-for-uri uri))
-          (root (lsp--workspace-root workspace)))
-      (cond
-       (buffer (with-current-buffer buffer (funcall fn)))
-       (root (lsp--with-workspace-temp-buffer root (funcall fn)))
-       (t (funcall fn))))))
+    (if-let* ((buffer (lsp-ltex-plus--buffer-for-uri uri)))
+        (with-current-buffer buffer (funcall fn))
+      (with-temp-buffer (funcall fn)))))
 
 (defmacro lsp-ltex-plus--with-document-context (workspace uri &rest body)
   "Evaluate BODY in the buffer identified by URI, inside WORKSPACE.

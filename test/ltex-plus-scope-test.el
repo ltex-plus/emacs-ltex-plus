@@ -184,10 +184,19 @@ the document is checked against nothing."
         (should (equal (ltex-plus-test-words (plist-get entry :dictionary))
                        '("global-word")))))))
 
-(ert-deftest ltex-plus-scope-test-dead-document-falls-back-to-the-root ()
-  "A URI whose buffer is gone is answered from the workspace root.
-The buffer can be killed between the check starting and the pull
-arriving; a project's settings should still answer for its own files."
+(ert-deftest ltex-plus-scope-test-dead-document-answers-globally ()
+  "A URI whose buffer is gone is answered with the global settings.
+A buffer can be killed between the check starting and the pull arriving.
+The server then finishes that check and publishes diagnostics for a
+document nothing displays, so the answer cannot be observed -- the reply
+only has to carry an entry for it.
+
+What it must not do is answer from the workspace root, which is what it
+once did.  Under `lsp-ltex-plus-multi-root\=' that root is whichever
+project opened first in the session, so here the dead document would be
+reported as de-DE: the German project's language, leaking to a document
+that has nothing to do with it."
+  (ltex-plus-test-reset)
   (ltex-plus-test-with-project ltex-plus-scope-test--project-spec
     (let* ((workspace (ltex-plus-test-workspace
                        (expand-file-name "german" ltex-plus-test-root)))
@@ -198,7 +207,9 @@ arriving; a project's settings should still answer for its own files."
            (enable-local-variables :all)
            (reply (lsp-ltex-plus--request-configuration workspace params)))
       (should (equal (ltex-plus-scope-test--setting (aref reply 0) "language")
-                     "de-DE")))))
+                     lsp-ltex-plus-language))
+      (should-not (equal (ltex-plus-scope-test--setting (aref reply 0) "language")
+                         "de-DE")))))
 
 (provide 'ltex-plus-scope-test)
 ;;; ltex-plus-scope-test.el ends here
