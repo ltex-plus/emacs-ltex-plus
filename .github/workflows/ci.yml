@@ -1,0 +1,64 @@
+# Byte-compilation, checkdoc and the offline ERT suite, on every push to
+# main and every pull request.
+#
+# The live tests are not run here: they need a real `ltex-ls-plus' and a
+# JVM, and they skip on their own when `LTEX_PLUS_LIVE' is unset.  Run
+# them locally with `make test-live' before tagging a release.
+#
+# The matrix starts at 29.1 because that is what `lsp-mode' requires.
+# The package header still says 27.1, which no current `lsp-mode' can be
+# installed alongside -- so that claim is untested rather than upheld.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        emacs_version: ['29.1', '29.4', '30.1', 'snapshot']
+    name: Emacs ${{ matrix.emacs_version }}
+    # A snapshot Emacs breaks for reasons that are not this package's;
+    # it is here as early warning, not as a gate.
+    continue-on-error: ${{ matrix.emacs_version == 'snapshot' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: purcell/setup-emacs@master
+        with:
+          version: ${{ matrix.emacs_version }}
+
+      # Into the default package.el directory, which is one of the places
+      # the test helper and the Makefile already look.  Deliberately
+      # unpinned: an upstream change that breaks this client should show
+      # up here rather than in a user's config.
+      - name: Install lsp-mode
+        run: |
+          emacs --batch --eval "(progn
+            (require 'package)
+            (add-to-list 'package-archives
+                         '(\"melpa\" . \"https://melpa.org/packages/\") t)
+            (package-initialize)
+            (package-refresh-contents)
+            (package-install 'lsp-mode))"
+
+      - name: Report versions
+        run: |
+          emacs --version | head -1
+          emacs --batch --eval "(progn
+            (require 'package) (package-initialize)
+            (message \"lsp-mode %s\"
+                     (package-desc-version
+                      (cadr (assq 'lsp-mode package-alist)))))"
+
+      - run: make check
