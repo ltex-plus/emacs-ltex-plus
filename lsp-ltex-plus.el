@@ -4,7 +4,7 @@
 ;; Maintainer: Andrea Alberti <a.alberti82@gmail.com>
 ;; Assisted-by: Claude:claude-opus-4-7
 ;; Version: 0.5.1
-;; Package-Requires: ((emacs "29.1") (lsp-mode "6.0"))
+;; Package-Requires: ((emacs "29.1") (lsp-mode "10.0.0"))
 ;; Keywords: lsp, grammar, spelling, convenience
 ;; URL: https://github.com/ltex-plus/emacs-ltex-plus
 

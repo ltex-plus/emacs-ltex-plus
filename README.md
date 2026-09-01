@@ -65,7 +65,7 @@ Two caveats worth stating honestly:
 Before using this package, you need:
 
 1.  **Emacs:** Version **29.1** or later — the floor is set by `lsp-mode`, which requires it. Tree-sitter major modes (`bash-ts-mode`, `python-ts-mode`, …) are picked up automatically when the running Emacs has them; the 30.1 ones are skipped on 29.x.
-2.  **Emacs lsp-mode:** This package is an extension for `lsp-mode` (version 6.0 or higher). Therefore, `lsp-mode` must be installed and available before `lsp-ltex-plus` can function. We strongly recommend a recent build; see [Recommended `lsp-mode` Revision](#recommended-lsp-mode-revision) below.
+2.  **Emacs lsp-mode:** This package is an extension for `lsp-mode` (version **10.0.0** or higher), which must be installed and available before `lsp-ltex-plus` can function. 10.0.0 is the highest version that can be declared, but it is not really enough: the package is written against `lsp-mode` commits newer than any release. Install a recent build from MELPA or from master — see [Recommended `lsp-mode` Revision](#recommended-lsp-mode-revision) below.
 3.  **LTeX+ Language Server:** This is the core engine that performs the grammar checks. The recommended version is 18.7+. See [Server Installation](#server-installation) below on how to install it.
 4.  **Java:** LTeX+ requires **Java 21** or higher. Most platform-specific releases of LTeX+ include a bundled Java runtime, so you don't necessarily need to install it separately. See [Java Runtime Configuration](#3-java-runtime-configuration) for details.
 5.  **Operating system:** Linux, macOS, and Windows are fully supported. 
@@ -83,6 +83,8 @@ Five LSP-protocol bugs that this package historically worked around have since b
 | [#5059](https://github.com/emacs-lsp/lsp-mode/pull/5059) | Preserve empty-object capabilities (e.g. `completionProvider: {}`) under `lsp-use-plists`. |
 
 All five are present on `lsp-mode` master from commit [`0951bf38`](https://github.com/emacs-lsp/lsp-mode/commit/0951bf38) (2026-05-15) onward. Installing a recent `lsp-mode` and **leaving `lsp-ltex-plus-apply-kind-first-patch` out of your config** (it defaults to `nil`) is the recommended setup. As of today the option `lsp-ltex-plus-apply-kind-first-patch` is therefore **deprecated**: setting it to `t` against a recent `lsp-mode` only duplicates upstream fixes (harmless, just redundant), and the option will be removed once the package's `Package-Requires` minimum is bumped past commit `0951bf38`.
+
+That bump cannot happen yet, and not because of anything on this side. `Package-Requires` can only name a released version, and `lsp-mode`'s latest release is **10.0.0** from 2026-04-03 — six weeks *older* than `0951bf38`, with master some 40 commits ahead of it. So the declared minimum of 10.0.0 is simply the highest one expressible; it does not describe what the package actually needs. If you install `lsp-mode` from MELPA (which builds from master) or from git, you already have the fixes and nothing further is required of you.
 
 ## Server Installation
 
