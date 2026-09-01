@@ -142,19 +142,20 @@ is that the parser does not signal."
 The patch replaces the parser for every LSP client in the session, so a
 signal escaping here would take down servers that have nothing to do
 with this package."
-  (let ((inhibit-message t))
-    (ltex-plus-patch-test--dispatch
-        (ltex-plus-test-obj :jsonrpc "2.0" :id 1 :result "x")
-      ;; Reached at all means `with-demoted-errors' did its job; the
-      ;; assertion is simply that the call returned.
-      (should t)))
-  (let ((inhibit-message t)
-        (workspace (make-lsp--workspace :client nil)))
-    ;; A workspace with no client makes the handler lookup signal; the
-    ;; call must still return normally.
-    (should-not (lsp-ltex-plus--parser-on-message-patch
-                 (ltex-plus-test-obj :jsonrpc "2.0" :id 1 :result "x")
-                 workspace))))
+  (ltex-plus-test-without-debugger
+    (let ((inhibit-message t))
+      (ltex-plus-patch-test--dispatch
+          (ltex-plus-test-obj :jsonrpc "2.0" :id 1 :result "x")
+        ;; Reached at all means `with-demoted-errors' did its job; the
+        ;; assertion is simply that the call returned.
+        (should t)))
+    (let ((inhibit-message t)
+          (workspace (make-lsp--workspace :client nil)))
+      ;; A workspace with no client makes the handler lookup signal; the
+      ;; call must still return normally.
+      (should-not (lsp-ltex-plus--parser-on-message-patch
+                   (ltex-plus-test-obj :jsonrpc "2.0" :id 1 :result "x")
+                   workspace)))))
 
 (ert-deftest ltex-plus-patch-test-reads-both-json-representations ()
   "The patch reads hash-table messages and plist messages alike.

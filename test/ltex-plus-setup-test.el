@@ -216,8 +216,18 @@ than a reading of the source."
   (lsp-ltex-plus--setup)
   (let ((sent nil)
         (workspace (ltex-plus-test-workspace)))
+    ;; The version check is stubbed out, not merely tolerated.  It is the
+    ;; other thing `:initialized-fn' does, and on a machine with no
+    ;; `ltex-ls-plus' installed it finds no version, declares the fixture
+    ;; workspace too old and tries to shut it down -- reaching into
+    ;; `lsp-mode' for a process the fixture does not have.  That says
+    ;; nothing about the settings payload this function is here to read,
+    ;; and it made the test depend on whether a server happened to be
+    ;; installed.  `ltex-plus-settings-test' covers the check itself.
     (cl-letf (((symbol-function 'lsp-notify)
-               (lambda (_method params) (setq sent params))))
+               (lambda (_method params) (setq sent params)))
+              ((symbol-function 'lsp-ltex-plus--enforce-server-version)
+               #'ignore))
       (funcall (lsp--client-initialized-fn (gethash 'ltex-ls-plus lsp-clients))
                workspace))
     (should sent)

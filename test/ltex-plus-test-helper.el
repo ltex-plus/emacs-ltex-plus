@@ -213,6 +213,18 @@ workspace, which a batch test has none of, so the mapping registered in
   "Return the `:title' of each action in ACTIONS, as a list."
   (mapcar (lambda (action) (lsp-get action :title)) (append actions nil)))
 
+(defmacro ltex-plus-test-without-debugger (&rest body)
+  "Run BODY with `debug-on-error\=' nil, whatever ERT set it to.
+`with-demoted-errors\=' is `condition-case-unless-debug\=', so it demotes
+nothing while the debugger is armed.  ERT up to Emacs 29 arms it around
+every test (from Emacs 30 it uses `handler-bind\=' and leaves the
+variable alone), which turns any test of a demoted path into a test of
+the Emacs version instead: passing on 30 and later, failing on 29.  Wrap
+such a test in this to assert on what a user actually gets."
+  (declare (indent 0) (debug t))
+  `(let ((debug-on-error nil))
+     ,@body))
+
 (defun ltex-plus-test-workspace (&optional root)
   "Return a workspace fixture rooted at ROOT, for the request handlers.
 The two handlers take (WORKSPACE PARAMS) and need no live process, but
