@@ -2157,11 +2157,25 @@ Runs the binary with `--version\=', which prints JSON:
   {\"ltex-ls\": \"18.7.1-alpha.32+2026-08-26.g7977ac67\", \"java\": \"21.0.10\"}
 
 Used only when the running server did not report a version through the
-protocol; see `lsp-ltex-plus--enforce-server-version\='."
+protocol; see `lsp-ltex-plus--enforce-server-version\='.
+
+`executable-find\=' only checks that the file exists and carries the
+executable bit; the kernel can still refuse to run it.  A binary built
+for another architecture, a truncated or corrupt download, and a script
+whose interpreter is missing all pass the first test and fail the
+second, arriving here as a `file-error\='.  Each is something to fix on
+disk, so the file is named along with the reason -- the caller only
+reports that no version could be determined, which would not point at
+any of them.  Only that condition is caught: anything else is a fault in
+this function and must not be turned into a missing version."
   (when-let* ((executable (executable-find lsp-ltex-plus-ls-plus-executable)))
     (with-temp-buffer
-      (when (ignore-errors
-              (eq 0 (call-process executable nil t nil "--version")))
+      (when (condition-case err
+                (eq 0 (call-process executable nil t nil "--version"))
+              (file-error
+               (message "[lsp-ltex-plus] Cannot run %s: %s"
+                        executable (error-message-string err))
+               nil))
         (goto-char (point-min))
         (when (re-search-forward
                "\"ltex-ls\"[[:space:]]*:[[:space:]]*\"\\([^\"]+\\)\"" nil t)
