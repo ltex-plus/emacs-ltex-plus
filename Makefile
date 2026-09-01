@@ -23,11 +23,44 @@
 EMACS ?= emacs
 PACKAGE_FILES := lsp-ltex-plus-bootstrap.el lsp-ltex-plus.el
 
+# Every multi-line `--eval' below is built as a variable, never written
+# inline in a recipe.  Make collapses a backslash-newline in a variable
+# assignment on every version; in a recipe it does not, and the backslash
+# then survives inside the single quotes and reaches Emacs as a symbol.
+# Make 3.81 (macOS) happens to collapse it there too, so an inline recipe
+# works locally and fails on a newer make -- which is how this reached CI.
+
 # Puts lsp-mode on `load-path' by reusing the test helper's own search, so
 # there is one place that knows where dependencies live.
 LOAD_DEPENDENCIES := --eval '(progn \
   (add-to-list (quote load-path) (expand-file-name "test")) \
   (load "ltex-plus-test-helper" nil t))'
+
+# Byte-compile into a temporary directory (see the `compile' target).
+COMPILE_SETUP := --eval '(progn \
+  (setq byte-compile-error-on-warn t) \
+  (defvar ltex-out (make-temp-file "ltex-plus-compile-" t)) \
+  (setq byte-compile-dest-file-function \
+        (lambda (source) \
+          (expand-file-name (concat (file-name-nondirectory source) "c") \
+                            ltex-out))))'
+
+# Docstring conventions, exiting non-zero on any finding (see `checkdoc').
+CHECKDOC_RUN := --eval '(progn \
+  (require (quote checkdoc)) \
+  (setq checkdoc-force-docstrings-flag nil) \
+  (dolist (file (list $(foreach f,$(PACKAGE_FILES),"$(f)"))) \
+    (checkdoc-file file)) \
+  (if (get-buffer "*Warnings*") \
+      (kill-emacs 1) \
+    (message "checkdoc: clean")))'
+
+# Loads the live fixture into the daemon (see `live-repl').
+LIVE_REPL_SETUP := --eval '(progn \
+  (add-to-list (quote load-path) "$(CURDIR)") \
+  (add-to-list (quote load-path) "$(CURDIR)/test") \
+  (require (quote ltex-plus-live-helper)) \
+  (ltex-plus-live-configure))'
 
 .PHONY: all check test test-live live-repl compile checkdoc lint clean
 
@@ -49,12 +82,7 @@ test-live:
 # instead of being reconstructed from a batch backtrace.  Kill it with
 # `emacsclient -s ltex-test -e "(kill-emacs)"'.
 live-repl:
-	@LTEX_PLUS_LIVE=1 $(EMACS) --daemon=ltex-test \
-	  --eval '(progn \
-	            (add-to-list (quote load-path) "$(CURDIR)") \
-	            (add-to-list (quote load-path) "$(CURDIR)/test") \
-	            (require (quote ltex-plus-live-helper)) \
-	            (ltex-plus-live-configure))'
+	@LTEX_PLUS_LIVE=1 $(EMACS) --daemon=ltex-test $(LIVE_REPL_SETUP)
 	@echo 'Daemon "ltex-test" is up. Try:'
 	@echo '  emacsclient -s ltex-test -e "(ltex-plus-live-open (ltex-plus-live-write \"x.md\" \"He go home.\\n\"))"'
 	@echo '  emacsclient -s ltex-test -e "(ltex-plus-live-messages)"'
@@ -67,15 +95,7 @@ live-repl:
 # tree would shadow the `.el' on the next `make test' and quietly test the
 # previous version of the code.
 compile:
-	@$(EMACS) --batch -Q -L . $(LOAD_DEPENDENCIES) \
-	  --eval '(progn \
-	            (setq byte-compile-error-on-warn t) \
-	            (defvar ltex-out (make-temp-file "ltex-plus-compile-" t)) \
-	            (setq byte-compile-dest-file-function \
-	                  (lambda (source) \
-	                    (expand-file-name \
-	                     (concat (file-name-nondirectory source) "c") \
-	                     ltex-out))))' \
+	@$(EMACS) --batch -Q -L . $(LOAD_DEPENDENCIES) $(COMPILE_SETUP) \
 	  -f batch-byte-compile $(PACKAGE_FILES)
 
 # `checkdoc-file' only reports -- it warns and returns 0.  In batch the
@@ -83,15 +103,7 @@ compile:
 # status is whether *Warnings* exists at all.  A target that prints its
 # findings and then succeeds is one whose findings come back.
 checkdoc:
-	@$(EMACS) --batch -Q -L . $(LOAD_DEPENDENCIES) \
-	  --eval '(progn \
-	            (require (quote checkdoc)) \
-	            (setq checkdoc-force-docstrings-flag nil) \
-	            (dolist (file (list $(foreach f,$(PACKAGE_FILES),"$(f)"))) \
-	              (checkdoc-file file)) \
-	            (if (get-buffer "*Warnings*") \
-	                (kill-emacs 1) \
-	              (message "checkdoc: clean")))'
+	@$(EMACS) --batch -Q -L . $(LOAD_DEPENDENCIES) $(CHECKDOC_RUN)
 
 lint:
 	@dev/package-lint.sh
