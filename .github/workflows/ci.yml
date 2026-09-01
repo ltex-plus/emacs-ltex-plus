@@ -5,8 +5,12 @@
 # JVM, and they skip on their own when `LTEX_PLUS_LIVE' is unset.  Run
 # them locally with `make test-live' before tagging a release.
 #
-# The matrix starts at 29.1, which is the package's declared floor and
-# also what `lsp-mode' requires.
+# The matrix is the declared floor (29.1, also what `lsp-mode' requires),
+# then the newest of each series, then master.  Both ends have already
+# earned their place: ERT arms `debug-on-error' around every test up to
+# 29 and not after, and `checkdoc' turns its experimental verb check off
+# by default from 31 -- each of which failed a run that the other
+# versions passed.
 
 name: CI
 
@@ -25,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        emacs_version: ['29.1', '29.4', '30.1', 'snapshot']
+        emacs_version: ['29.1', '29.4', '30.2', '31.1', 'snapshot']
     name: Emacs ${{ matrix.emacs_version }}
     # A snapshot Emacs breaks for reasons that are not this package's;
     # it is here as early warning, not as a gate.
