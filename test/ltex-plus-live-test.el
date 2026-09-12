@@ -114,6 +114,97 @@ what answering per document depends on."
                                uri))))))
       (advice-remove 'lsp-ltex-plus--handle-request 'ltex-plus-live-watch))))
 
+;;;; -- Code actions -------------------------------------------------------------
+
+(defun ltex-plus-live-test--actions-at (buffer point)
+  "Return the expanded code actions the menu would offer at POINT in BUFFER."
+  (with-current-buffer buffer
+    (goto-char point)
+    (lsp-ltex-plus--expand-suggestions (lsp-ltex-plus--request-code-actions point point))))
+
+(ltex-plus-live-deftest ltex-plus-live-test-a-suggestion-can-be-accepted
+    "The server's replacement for a grammar error, applied, fixes the text.
+The edit arrives as documentChanges on the version the server checked;
+applying it and seeing the underline go is the whole code-action path
+against the real thing."
+  (ltex-plus-live-test--setup)
+  (let ((buffer (ltex-plus-live-open
+                 (ltex-plus-live-write "accept.md" "He go to school.\n"))))
+    (let* ((actions (ltex-plus-live-test--actions-at buffer 5))
+           (fix (seq-find (lambda (action) (equal (plist-get action :title) "Use 'goes'"))
+                          actions)))
+      (should fix)
+      (with-current-buffer buffer
+        (ltex-plus-live-after-publish
+         (lambda () (lsp-ltex-plus--run-action fix))
+         "the re-check after accepting the suggestion")
+        (should (equal (buffer-string) "He goes to school.\n"))
+        (should-not (ltex-plus-live-diagnostics))))))
+
+(ltex-plus-live-deftest ltex-plus-live-test-an-accepted-word-stops-being-flagged
+    "Adding a word to the dictionary silences it on the next check.
+The package's central mechanism, asserted at the only level that
+matters.  Everything in between -- writing the file, rebuilding the
+merged view, pushing to the server, answering the pull it makes in
+reply -- is covered offline one link at a time; this is the chain."
+  (ltex-plus-live-test--setup)
+  (let* ((word "Zorbulax")
+         (buffer (ltex-plus-live-open
+                  (ltex-plus-live-write
+                   "dictionary.md" (format "The %s is here.\n" word))))
+         (lsp-ltex-plus-save-additions-to 'globally-defined))
+    (with-current-buffer buffer
+      (should (ltex-plus-live-flagged-p word))
+      (let* ((actions (ltex-plus-live-test--actions-at buffer 6))
+             (add (seq-find (lambda (action)
+                              (equal (plist-get (plist-get action :command) :command)
+                                     "_ltex.addToDictionary"))
+                            actions)))
+        (should add)
+        (ltex-plus-live-after-publish
+         (lambda () (lsp-ltex-plus--run-action add))
+         "the re-check after the word was accepted"))
+      (should-not (ltex-plus-live-flagged-p word))
+      (should (equal (ltex-plus-test-words
+                      (ltex-plus-test-read-file lsp-ltex-plus-dictionary-file))
+                     (list word))))))
+
+(ltex-plus-live-deftest ltex-plus-live-test-the-project-variant-writes-only-there
+    "In a project with its own dictionary the offer is doubled and each writes once.
+The split and the marker are decided offline; that the real server's
+suggestion carries what the split needs, and that the project file it
+lands in is what the next check reads, is only visible here."
+  (ltex-plus-live-test--setup)
+  (let* ((word "Grimblewort")
+         (root (file-name-as-directory
+                (expand-file-name "split" (ltex-plus-live-root))))
+         (project-file (expand-file-name ".ltex/words.eld" root))
+         (lsp-ltex-plus-save-additions-to 'either-allowing-user-choice))
+    (ltex-plus-live-write
+     ".dir-locals.el"
+     "((nil . ((lsp-ltex-plus-project-dictionary-file . \".ltex/words.eld\"))))"
+     root)
+    (let ((buffer (ltex-plus-live-open
+                   (ltex-plus-live-write "doc.md" (format "A %s appeared.\n" word) root))))
+      (with-current-buffer buffer
+        (should (ltex-plus-live-flagged-p word))
+        (let* ((actions (ltex-plus-live-test--actions-at buffer 4))
+               (adds (seq-filter (lambda (action)
+                                   (equal (plist-get (plist-get action :command) :command)
+                                          "_ltex.addToDictionary"))
+                                 actions)))
+          (should (equal (ltex-plus-test-titles adds)
+                         (list (format "Add '%s' to project dictionary" word)
+                               (format "Add '%s' to global dictionary" word))))
+          (ltex-plus-live-after-publish
+           (lambda () (lsp-ltex-plus--run-action (car adds)))
+           "the re-check after the project variant was accepted"))
+        (should-not (ltex-plus-live-flagged-p word))
+        (should (equal (ltex-plus-test-words (ltex-plus-test-read-file project-file))
+                       (list word)))
+        (should-not (ltex-plus-test-words
+                     (ltex-plus-test-read-file lsp-ltex-plus-dictionary-file)))))))
+
 ;;;; -- Per-document settings ---------------------------------------------------
 
 (ltex-plus-live-deftest ltex-plus-live-test-each-project-is-checked-in-its-language
