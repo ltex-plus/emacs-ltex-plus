@@ -79,7 +79,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ltex-ls-plus
-          key: ltex-ls-plus-${{ steps.release.outputs.tag }}-linux-x64
+          key: ltex-ls-plus-${{ steps.release.outputs.tag }}-linux-x64-layout2
 
       - name: Download the server
         if: steps.cache.outputs.cache-hit != 'true'
@@ -91,13 +91,15 @@ jobs:
             --pattern 'ltex-ls-plus-*-linux-x64.tar.gz' \
             --output server.tar.gz
           mkdir ltex-ls-plus
-          tar xzf server.tar.gz -C ltex-ls-plus --strip-components=1
+          # Entries are "./ltex-ls-plus-X.Y.Z/bin/...": two components to drop.
+          tar xzf server.tar.gz -C ltex-ls-plus --strip-components=2
           rm server.tar.gz
 
       # The launcher script picks its Java from JAVA_HOME; point it at the
       # JDK the release bundles rather than whatever the runner ships.
       - name: Put the server on PATH
         run: |
+          test -x ltex-ls-plus/bin/ltex-ls-plus || { ls -R ltex-ls-plus | head -20; exit 1; }
           echo "${PWD}/ltex-ls-plus/bin" >> "$GITHUB_PATH"
           echo "JAVA_HOME=$(ls -d "${PWD}"/ltex-ls-plus/jdk-*)" >> "$GITHUB_ENV"
 
