@@ -6,9 +6,12 @@
 #   test/run-tests.sh project additions   # only the named files (substring match)
 #   test/run-tests.sh -s SELECTOR         # an ERT selector, e.g. a test-name regexp
 #
-# Each file runs in its own Emacs batch process, so that no test file can
-# depend on what another one loaded or left behind.  With no global advice
-# left in the package this may be relaxed later; see test/README.md.
+# The selected files run in one Emacs batch process.  They used to run
+# one per process because two of them installed global advice on
+# lsp-mode; with that gone, nothing a file loads or leaves behind reaches
+# another: the fake server is started and stopped per test, and every
+# test that asserts on list contents resets them first.  One process
+# saves the suite about ten Emacs start-ups.
 #
 # Also honours EMACS (default: emacs).
 #
@@ -60,22 +63,19 @@ else
   run=(-f ert-run-tests-batch-and-exit)
 fi
 
-failed=()
+load=()
 for file in "${files[@]}"; do
-  name="$(basename "${file}" .el)"
-  echo "=== ${name} ==============================================="
-  if ! "${EMACS}" --batch -Q \
-        -L "${REPO_ROOT}" -L "${SCRIPT_DIR}" \
-        -l "${file}" "${run[@]}"; then
-    failed+=("${name}")
-  fi
-  echo
+  load+=(-l "${file}")
 done
 
+echo "=== $(printf '%s ' "${files[@]##*/}")"
+"${EMACS}" --batch -Q -L "${REPO_ROOT}" -L "${SCRIPT_DIR}" "${load[@]}" "${run[@]}"
+status=$?
+echo
 echo "==========================================================="
-if [[ ${#failed[@]} -eq 0 ]]; then
+if [[ ${status} -eq 0 ]]; then
   echo "All ${#files[@]} test file(s) passed."
   exit 0
 fi
-echo "Failed: ${failed[*]}"
+echo "Failed (exit ${status}); see above."
 exit 1
