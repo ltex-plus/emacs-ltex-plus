@@ -276,6 +276,16 @@ For a more robust setup using `use-package` and `straight.el`, you can use the f
   ;; Send the buffer to the server a little sooner after you stop typing.
   (lsp-ltex-plus-change-delay 0.3)
 
+  ;; If you run flyspell globally, uncomment the next line to have it
+  ;; switched off in the buffers LTeX+ checks: it flags macro names,
+  ;; identifiers and proper nouns there, against a dictionary that is not
+  ;; the one you maintain with LTeX+.  With flyspell out of the way its
+  ;; own key, C-c $, is free, and it needs no Shift: a natural home for
+  ;; the LTeX+ commands (C-c $ a for the suggestions, C-c $ d to add a
+  ;; word).  Any other prefix works just as well.
+  ;; (lsp-ltex-plus-disable-flyspell t)
+  ;; (lsp-ltex-plus-keymap-prefix "C-c $")
+
   :init
   ;; Enable lsp-ltex-plus for all supported major modes. The full package
   ;; loads lazily — only when you first open a relevant file.
