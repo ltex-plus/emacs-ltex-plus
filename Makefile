@@ -3,6 +3,7 @@
 #
 #   make test       run the ERT suite (test/); live tests skip
 #   make test-live  the same, with the tests that need a real ltex-ls-plus
+#   make live-repl  a daemon with the live fixture loaded, for debugging
 #   make compile    byte-compile the package files, warnings and all
 #   make checkdoc   docstring conventions
 #   make lint       package-lint, as MELPA runs it
@@ -54,7 +55,14 @@ CHECKDOC_RUN := --eval '(progn \
       (kill-emacs 1) \
     (message "checkdoc: clean")))'
 
-.PHONY: all check test test-live compile checkdoc lint clean
+# Loads the live fixture into the daemon (see `live-repl').
+LIVE_REPL_SETUP := --eval '(progn \
+  (add-to-list (quote load-path) "$(CURDIR)") \
+  (add-to-list (quote load-path) "$(CURDIR)/test") \
+  (require (quote ltex-plus-live-helper)) \
+  (ltex-plus-live-configure))'
+
+.PHONY: all check test test-live live-repl compile checkdoc lint clean
 
 all: check
 
@@ -68,6 +76,17 @@ test:
 # One JVM serves the whole file -- about 20 seconds in total.
 test-live:
 	@LTEX_PLUS_LIVE=1 test/run-tests.sh
+
+# For working on a live test that fails: a daemon with the fixture
+# already loaded, so the session can be poked at from `emacsclient'
+# instead of being reconstructed from a batch backtrace.  Kill it with
+# `emacsclient -s ltex-test -e "(kill-emacs)"'.
+live-repl:
+	@LTEX_PLUS_LIVE=1 $(EMACS) --daemon=ltex-test $(LIVE_REPL_SETUP)
+	@echo 'Daemon "ltex-test" is up. Try:'
+	@echo '  emacsclient -s ltex-test -e "(ltex-plus-live-open (ltex-plus-live-write \"x.md\" \"He go home.\\n\"))"'
+	@echo '  emacsclient -s ltex-test -e "(ltex-plus-live-messages)"'
+	@echo '  emacsclient -s ltex-test -e "(kill-emacs)"'
 
 # Byte-compilation is a check in its own right: it is what catches a free
 # variable, a call with the wrong number of arguments, or a docstring that
