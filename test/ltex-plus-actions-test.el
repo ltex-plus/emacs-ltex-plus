@@ -205,5 +205,160 @@ as keywords."
                  '(:documentChanges [(:kind "create" :uri "file:///t/new.rst")]))
                 :type 'user-error))
 
+;;;; -- The menu -----------------------------------------------------------------
+
+(defun ltex-plus-actions-test--fix-for (buffer)
+  "Return the replacement suggestion aimed at BUFFER's document."
+  (let ((fix (copy-tree ltex-plus-actions-test--fix t)))
+    (plist-put (plist-get (aref (plist-get (plist-get fix :edit) :documentChanges) 0)
+                          :textDocument)
+               :uri (lsp-ltex-plus--buffer-uri buffer))
+    fix))
+
+(defmacro ltex-plus-actions-test--choosing (title &rest body)
+  "Run BODY with the menu answering TITLE, and record what it was offered.
+`offered' is bound to the list of labels the user would have seen."
+  (declare (indent 1) (debug t))
+  `(let ((offered nil))
+     (cl-letf (((symbol-function 'completing-read)
+                (lambda (_prompt collection &rest _)
+                  (setq offered (append collection nil))
+                  ,title)))
+       (ignore offered)
+       ,@body)))
+
+(ert-deftest ltex-plus-actions-test-choosing-a-replacement-applies-it ()
+  "The menu offers the server's titles, and the chosen replacement is applied."
+  (ltex-plus-actions-test--with-checked-buffer buffer "Hello teh world.\n"
+    (let ((ltex-plus-fake-code-actions (vector (ltex-plus-actions-test--fix-for buffer))))
+      (with-current-buffer buffer
+        (goto-char 8)
+        (ltex-plus-actions-test--choosing "Use 'the'"
+          (lsp-ltex-plus-code-actions)
+          (should (equal offered '("Use 'the'"))))
+        (should (equal (buffer-string) "Hello the world.\n"))))))
+
+(ert-deftest ltex-plus-actions-test-choosing-a-word-saves-it ()
+  "Picking the add-to-dictionary entry writes the word and tells the server."
+  (ltex-plus-test-reset)
+  (ltex-plus-actions-test--with-checked-buffer buffer "Hello teh world.\n"
+    (let ((ltex-plus-fake-code-actions
+           (vector (ltex-plus-actions-test--fix-for buffer)
+                   (ltex-plus-test-suggestion "_ltex.addToDictionary"
+                                              "Add 'teh' to dictionary" :words '("teh"))))
+          (lsp-ltex-plus-save-additions-to 'globally-defined)
+          (pushes (length (ltex-plus-fake-received 'workspace/didChangeConfiguration))))
+      (with-current-buffer buffer
+        (goto-char 8)
+        (ltex-plus-actions-test--choosing "Add 'teh' to dictionary"
+          (lsp-ltex-plus-code-actions)
+          (should (equal offered '("Use 'the'" "Add 'teh' to dictionary")))))
+      (should (equal (ltex-plus-test-words lsp-ltex-plus--dictionary-merged) '("teh")))
+      (ltex-plus-fake-wait-for
+       (lambda () (> (length (ltex-plus-fake-received 'workspace/didChangeConfiguration))
+                     pushes))))))
+
+(ert-deftest ltex-plus-actions-test-same-titles-are-told-apart ()
+  "Two suggestions with one title are numbered, and either can be chosen."
+  (ltex-plus-actions-test--with-checked-buffer buffer "Hello teh world.\n"
+    (let* ((first (ltex-plus-actions-test--fix-for buffer))
+           (second (copy-tree first t))
+           (edit (aref (plist-get (aref (plist-get (plist-get second :edit) :documentChanges) 0)
+                                  :edits)
+                       0)))
+      ;; `:newText' already exists, so `plist-put' changes it in place.
+      (plist-put edit :newText "THE")
+      (let ((ltex-plus-fake-code-actions (vector first second)))
+        (with-current-buffer buffer
+          (goto-char 8)
+          (ltex-plus-actions-test--choosing "Use 'the' (2)"
+            (lsp-ltex-plus-code-actions)
+            (should (equal offered '("Use 'the'" "Use 'the' (2)"))))
+          (should (equal (buffer-string) "Hello THE world.\n")))))))
+
+(ert-deftest ltex-plus-actions-test-nothing-to-suggest-says-so ()
+  "With no actions there is no menu, only a message."
+  (ltex-plus-actions-test--with-checked-buffer buffer "Hello teh world.\n"
+    (let ((ltex-plus-fake-code-actions [])
+          (said nil))
+      (with-current-buffer buffer
+        (cl-letf (((symbol-function 'completing-read)
+                   (lambda (&rest _) (error "No menu should appear")))
+                  ((symbol-function 'message)
+                   (lambda (fmt &rest args) (setq said (apply #'format fmt args)))))
+          (lsp-ltex-plus-code-actions)))
+      (should (string-match-p "Nothing to suggest" said)))))
+
+(ert-deftest ltex-plus-actions-test-add-to-dictionary-skips-the-menu ()
+  "The dictionary shortcut takes the one add-to-dictionary offer without asking."
+  (ltex-plus-test-reset)
+  (ltex-plus-actions-test--with-checked-buffer buffer "Hello teh world.\n"
+    (let ((ltex-plus-fake-code-actions
+           (vector (ltex-plus-actions-test--fix-for buffer)
+                   (ltex-plus-test-suggestion "_ltex.addToDictionary"
+                                              "Add 'teh' to dictionary" :words '("teh"))))
+          (lsp-ltex-plus-save-additions-to 'globally-defined))
+      (with-current-buffer buffer
+        (goto-char 8)
+        (cl-letf (((symbol-function 'completing-read)
+                   (lambda (&rest _) (error "No menu should appear"))))
+          (lsp-ltex-plus-add-to-dictionary)))
+      (should (equal (ltex-plus-test-words lsp-ltex-plus--dictionary-merged) '("teh"))))))
+
+(ert-deftest ltex-plus-actions-test-add-to-dictionary-still-asks-where ()
+  "With both destinations on offer, the shortcut asks which, and nothing else."
+  (ltex-plus-test-reset)
+  (ltex-plus-fake-with-connection
+    (ltex-plus-test-with-project
+        '((".dir-locals.el"
+           . "((nil . ((lsp-ltex-plus-project-dictionary-file . \".ltex/words.eld\"))))")
+          ("doc.rst" . "Hello teh world.\n"))
+      (let ((buffer (ltex-plus-test-visit (project-file "doc.rst"))))
+        (with-current-buffer buffer (rst-mode))
+        (lsp-ltex-plus--open-document buffer)
+        (ltex-plus-fake-wait-for
+         (lambda () (buffer-local-value 'lsp-ltex-plus--diagnostics buffer)))
+        (let ((ltex-plus-fake-code-actions
+               (vector (ltex-plus-actions-test--fix-for buffer)
+                       (ltex-plus-test-suggestion "_ltex.addToDictionary"
+                                                  "Add 'teh' to dictionary" :words '("teh"))))
+              (lsp-ltex-plus-save-additions-to 'either-allowing-user-choice))
+          (with-current-buffer buffer
+            (goto-char 8)
+            (ltex-plus-actions-test--choosing "Add 'teh' to project dictionary"
+              (lsp-ltex-plus-add-to-dictionary)
+              (should (equal offered '("Add 'teh' to project dictionary"
+                                       "Add 'teh' to global dictionary")))))
+          (should (equal (ltex-plus-test-words
+                          (ltex-plus-test-read-file (project-file ".ltex/words.eld")))
+                         '("teh")))
+          (should-not (ltex-plus-test-words lsp-ltex-plus--dictionary-merged)))))))
+
+;;;; -- The keymap ---------------------------------------------------------------
+
+(ert-deftest ltex-plus-actions-test-the-commands-are-bound-under-the-prefix ()
+  "The four commands sit under the default prefix in the mode's map."
+  (should (eq (lookup-key lsp-ltex-plus-mode-map (kbd "C-c \" a"))
+              #'lsp-ltex-plus-code-actions))
+  (should (eq (lookup-key lsp-ltex-plus-mode-map (kbd "C-c \" d"))
+              #'lsp-ltex-plus-add-to-dictionary))
+  (should (eq (lookup-key lsp-ltex-plus-mode-map (kbd "C-c \" r"))
+              #'lsp-ltex-plus-reload-settings))
+  (should (eq (lookup-key lsp-ltex-plus-mode-map (kbd "C-c \" l"))
+              #'lsp-ltex-plus-list-dictionary)))
+
+(ert-deftest ltex-plus-actions-test-changing-the-prefix-moves-the-commands ()
+  "Setting the prefix through Customize rebinds, and unbinds the old one."
+  (let ((original lsp-ltex-plus-keymap-prefix))
+    (unwind-protect
+        (progn
+          (customize-set-variable 'lsp-ltex-plus-keymap-prefix "C-c ;")
+          (should (eq (lookup-key lsp-ltex-plus-mode-map (kbd "C-c ; a"))
+                      #'lsp-ltex-plus-code-actions))
+          (should-not (keymapp (lookup-key lsp-ltex-plus-mode-map (kbd "C-c \""))))
+          (customize-set-variable 'lsp-ltex-plus-keymap-prefix nil)
+          (should-not (keymapp (lookup-key lsp-ltex-plus-mode-map (kbd "C-c ;")))))
+      (customize-set-variable 'lsp-ltex-plus-keymap-prefix original))))
+
 (provide 'ltex-plus-actions-test)
 ;;; ltex-plus-actions-test.el ends here

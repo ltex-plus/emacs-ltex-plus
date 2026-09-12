@@ -155,6 +155,46 @@ starts, such as the executable or the Java to run it with; those need
   "0.3.1"
   "Renamed; see `lsp-ltex-plus-reload-settings'.")
 
+;;;; -- Keymap -----------------------------------------------------------------
+
+;; A prefix of the package's own, so that the bindings never collide with
+;; whatever another language server's client puts under `C-c l'.  The
+;; prefix is a setting; changing it through Customize rebinds at once.
+
+(defvar lsp-ltex-plus-command-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "a") #'lsp-ltex-plus-code-actions)
+    (define-key map (kbd "d") #'lsp-ltex-plus-add-to-dictionary)
+    (define-key map (kbd "r") #'lsp-ltex-plus-reload-settings)
+    (define-key map (kbd "l") #'lsp-ltex-plus-list-dictionary)
+    map)
+  "The commands of `lsp-ltex-plus-mode', bound under `lsp-ltex-plus-keymap-prefix'.")
+
+(defvar lsp-ltex-plus-mode-map (make-sparse-keymap)
+  "Keymap of `lsp-ltex-plus-mode'.
+Holds `lsp-ltex-plus-command-map' under `lsp-ltex-plus-keymap-prefix'.")
+
+(defun lsp-ltex-plus--bind-prefix (symbol prefix)
+  "Bind `lsp-ltex-plus-command-map' under PREFIX in the mode map; set SYMBOL.
+The `:set' function of `lsp-ltex-plus-keymap-prefix'.  The previous
+prefix, if any, is unbound first, so changing the setting moves the
+commands rather than duplicating them."
+  (when (and (boundp symbol) (symbol-value symbol))
+    (define-key lsp-ltex-plus-mode-map (kbd (symbol-value symbol)) nil t))
+  (set-default symbol prefix)
+  (when prefix
+    (define-key lsp-ltex-plus-mode-map (kbd prefix) lsp-ltex-plus-command-map)))
+
+(defcustom lsp-ltex-plus-keymap-prefix "C-c \""
+  "Prefix under which the commands of `lsp-ltex-plus-mode' are bound.
+A key description as `kbd' reads it.  Under it: `a' offers the
+suggestions for the region or point, `d' adds the word at point to the
+dictionary, `r' reloads the settings, `l' lists the dictionary in
+force.  Set to nil to bind nothing and use the commands by name."
+  :type '(choice (string :tag "Key description") (const :tag "No bindings" nil))
+  :set #'lsp-ltex-plus--bind-prefix
+  :group 'lsp-ltex-plus)
+
 ;;;; -- Minor mode -------------------------------------------------------------
 
 ;; Activation is a few decisions and two calls.  The decisions are the
@@ -259,6 +299,7 @@ activation from the dispatcher is declined unless
 \\[lsp-ltex-plus-mode] always proceeds, so an on-demand check needs no
 global setting first."
   :lighter " LTeX+"
+  :keymap lsp-ltex-plus-mode-map
   :group 'lsp-ltex-plus
   (if lsp-ltex-plus-mode
       (lsp-ltex-plus--enable (called-interactively-p 'any))

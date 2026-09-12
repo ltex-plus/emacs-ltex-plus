@@ -319,5 +319,63 @@ is kept."
                               (append actions nil))))
     (if (vectorp actions) (vconcat expanded) expanded)))
 
+;;;; -- The menu -----------------------------------------------------------------
+
+(defun lsp-ltex-plus--actions-here ()
+  "Return the code actions for the region, or for point, split where asked.
+The region when it is active, else the diagnostic at point; either way
+what the server offers, with this package's own suggestions expanded
+by `lsp-ltex-plus--expand-suggestions'."
+  (let ((beg (if (use-region-p) (region-beginning) (point)))
+        (end (if (use-region-p) (region-end) (point))))
+    (lsp-ltex-plus--expand-suggestions (lsp-ltex-plus--request-code-actions beg end))))
+
+(defun lsp-ltex-plus--choose-action (actions)
+  "Ask the user to pick one of ACTIONS by title, and return it.
+Two actions with the same title are told apart by a number, so the
+choice is never ambiguous and every action stays reachable."
+  (let ((seen (make-hash-table :test #'equal))
+        (candidates nil))
+    (dolist (action actions)
+      (let* ((title (or (plist-get action :title) "Untitled"))
+             (count (cl-incf (gethash title seen 0)))
+             (label (if (= count 1) title (format "%s (%d)" title count))))
+        (push (cons label action) candidates)))
+    (setq candidates (nreverse candidates))
+    (let ((completion-extra-properties '(:category lsp-ltex-plus-action)))
+      (cdr (assoc (completing-read "LTeX+ suggestion: " (mapcar #'car candidates)
+                                   nil t)
+                  candidates)))))
+
+;;;###autoload
+(defun lsp-ltex-plus-code-actions ()
+  "Offer what LTeX+ suggests for the region, or for the diagnostic at point.
+Pick a replacement to apply it; pick \"Add ... to dictionary\", \"Disable
+rule\" or \"Hide false positive\" to have the entry written to the
+list -- the project's or the global one, as `lsp-ltex-plus-save-additions-to'
+decides or as the two entries offered for it let you choose."
+  (interactive)
+  (let ((actions (lsp-ltex-plus--actions-here)))
+    (if (null actions)
+        (message "[lsp-ltex-plus] Nothing to suggest here")
+      (lsp-ltex-plus--run-action (lsp-ltex-plus--choose-action actions)))))
+
+;;;###autoload
+(defun lsp-ltex-plus-add-to-dictionary ()
+  "Accept the word under point into the dictionary.
+The shortest path for the commonest suggestion: the add-to-dictionary
+action for the diagnostic at point is carried out without a menu.  When
+both the project's and the global dictionary are on offer, the choice
+between them is still asked."
+  (interactive)
+  (let ((offers (seq-filter (lambda (action)
+                              (equal (plist-get (plist-get action :command) :command)
+                                     "_ltex.addToDictionary"))
+                            (lsp-ltex-plus--actions-here))))
+    (pcase (length offers)
+      (0 (message "[lsp-ltex-plus] No word to add here"))
+      (1 (lsp-ltex-plus--run-action (car offers)))
+      (_ (lsp-ltex-plus--run-action (lsp-ltex-plus--choose-action offers))))))
+
 (provide 'lsp-ltex-plus-actions)
 ;;; lsp-ltex-plus-actions.el ends here
