@@ -78,6 +78,7 @@
 (require 'lsp-ltex-plus-conn)
 (require 'lsp-ltex-plus-diag)
 (require 'lsp-ltex-plus-actions)
+(require 'lsp-ltex-plus-comint)
 
 ;;;; -- Setup and reload -------------------------------------------------------
 
@@ -256,20 +257,23 @@ major mode is known to the table."
     (lsp-ltex-plus--log "Not checking %s: it visits no file and the option is off"
                         (buffer-name))
     (setq lsp-ltex-plus-mode nil))
-   ((and (not buffer-file-name) (derived-mode-p 'comint-mode))
-    ;; Comint buffers get their input-region identity back in the next
-    ;; step of the move to jsonrpc; until then they are left alone rather
-    ;; than checked whole, output and all.
-    (lsp-ltex-plus--log "Not checking %s: comint support is pending" (buffer-name))
+   ((and (lsp-ltex-plus--comint-buffer-p) (not lsp-ltex-plus-check-comint-input))
+    (lsp-ltex-plus--log "Not checking %s: comint input and the option is off"
+                        (buffer-name))
     (setq lsp-ltex-plus-mode nil))
    (t
     (lsp-ltex-plus--log "Enabling LTeX+ in %s" (buffer-name))
     (condition-case err
         (progn
+          ;; A comint buffer's document is its input region, never the
+          ;; output above it; set that up before the document opens.
+          (when (lsp-ltex-plus--comint-buffer-p)
+            (lsp-ltex-plus--comint-setup))
           (lsp-ltex-plus--flymake-attach)
           (lsp-ltex-plus--open-document))
       (error
        (lsp-ltex-plus--flymake-detach)
+       (lsp-ltex-plus--comint-teardown)
        (setq lsp-ltex-plus-mode nil)
        (message "[lsp-ltex-plus] Could not start checking: %s"
                 (error-message-string err)))))))
@@ -281,7 +285,8 @@ The server itself keeps running for the other buffers, and for this one
 should the mode come back; `lsp-ltex-plus-shutdown-server' stops it."
   (lsp-ltex-plus--log "Disabling LTeX+ in %s" (buffer-name))
   (lsp-ltex-plus--close-document)
-  (lsp-ltex-plus--flymake-detach))
+  (lsp-ltex-plus--flymake-detach)
+  (lsp-ltex-plus--comint-teardown))
 
 ;; A major-mode change discards the buffer's local variables, the flymake
 ;; backend and its report function among them; clearing the underlines

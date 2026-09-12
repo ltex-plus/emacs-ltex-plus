@@ -168,15 +168,6 @@ The mode variable is left nil, so nothing claims to be checking it."
       (lsp-ltex-plus-mode 1))
     (should-not lsp-ltex-plus-mode)))
 
-(ert-deftest ltex-plus-mode-test-a-comint-buffer-is-declined-for-now ()
-  "A comint buffer is left alone until its input-region support returns.
-Checked whole it would be checked output and all, which is worse than
-not at all."
-  (ltex-plus-mode-test--with-server-present
-    (comint-mode)
-    (lsp-ltex-plus-mode 1)
-    (should-not lsp-ltex-plus-mode)))
-
 ;;;; -- Against the fake -------------------------------------------------------
 
 (defmacro ltex-plus-mode-test--with-file (var contents &rest body)

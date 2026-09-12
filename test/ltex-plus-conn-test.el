@@ -501,6 +501,24 @@ shorter, and a position must never signal."
     (should (= 7 (lsp-ltex-plus--position-to-point '(:line 2 :character 0))))
     (should (equal (lsp-ltex-plus--point-to-position 7) '(:line 2 :character 0)))))
 
+(ert-deftest ltex-plus-conn-test-positions-are-relative-to-the-document-region ()
+  "With a region as the document, line 0 starts at the region and columns count from it.
+The buffer is \"out\\n$ teh end\\nmore\"; the region starts after the
+prompt, so document (0, 0) is the `t' at point 7 and document (1, 0) is
+the `m' on the next line."
+  (ltex-plus-conn-test--in-buffer "out\n$ teh end\nmore"
+    (setq lsp-ltex-plus--document-region-function (lambda () (cons 7 (point-max))))
+    (should (equal (lsp-ltex-plus--document-text) "teh end\nmore"))
+    (should (= 7 (lsp-ltex-plus--position-to-point '(:line 0 :character 0))))
+    (should (= 10 (lsp-ltex-plus--position-to-point '(:line 0 :character 3))))
+    (should (= 15 (lsp-ltex-plus--position-to-point '(:line 1 :character 0))))
+    (should (= 19 (lsp-ltex-plus--position-to-point '(:line 1 :character 40))))
+    (should (equal (lsp-ltex-plus--point-to-position 7) '(:line 0 :character 0)))
+    (should (equal (lsp-ltex-plus--point-to-position 10) '(:line 0 :character 3)))
+    (should (equal (lsp-ltex-plus--point-to-position 16) '(:line 1 :character 1)))
+    ;; A point before the region is the region's start.
+    (should (equal (lsp-ltex-plus--point-to-position 2) '(:line 0 :character 0)))))
+
 (ert-deftest ltex-plus-conn-test-an-empty-range-still-covers-something ()
   "A zero-width diagnostic is widened to one character so it can be shown."
   (ltex-plus-conn-test--in-buffer "abc\n"

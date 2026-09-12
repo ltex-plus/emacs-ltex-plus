@@ -387,6 +387,32 @@ Incremented on every `didChange', as the protocol requires.")
   "The timer that will send this buffer's pending edits, or nil.
 See the Edits section below.")
 
+(defvar-local lsp-ltex-plus--document-region-function nil
+  "Function returning (BEG . END), the part of this buffer that is the document.
+Nil means the whole buffer.  A comint buffer sets it to the function
+that returns its input region; the text sent and every position
+conversion then use that region, with BEG as the origin of line 0.  The
+function may return nil to say there is no document just now -- a
+comint buffer while its program streams output -- in which case the
+text is empty and no edit is sent.")
+
+(defun lsp-ltex-plus--document-region ()
+  "Return (BEG . END), the part of the current buffer that is the document.
+The whole buffer, widened, unless `lsp-ltex-plus--document-region-function'
+says otherwise; nil when it says there is no document just now."
+  (if lsp-ltex-plus--document-region-function
+      (funcall lsp-ltex-plus--document-region-function)
+    (save-restriction
+      (widen)
+      (cons (point-min) (point-max)))))
+
+(defun lsp-ltex-plus--document-region-or-end ()
+  "Return the document region, or an empty region at the end when there is none.
+For position conversions, which need an origin even for an empty
+document."
+  (or (lsp-ltex-plus--document-region)
+      (save-restriction (widen) (cons (point-max) (point-max)))))
+
 (defvar-local lsp-ltex-plus--diagnostics nil
   "The diagnostics the server last published for this buffer, as a list.
 Each is the protocol's diagnostic object, a plist, untouched; see the
@@ -433,12 +459,14 @@ of it."
 
 (defun lsp-ltex-plus--document-text (&optional buffer)
   "Return the text of BUFFER (default the current buffer) as the server sees it.
-The whole buffer, narrowing notwithstanding: the server holds the full
-document and positions are relative to its start."
+The document region -- the whole buffer, narrowing notwithstanding,
+unless the buffer names a region of itself -- since the server holds
+the document and positions are relative to its start."
   (with-current-buffer (or buffer (current-buffer))
-    (save-restriction
-      (widen)
-      (buffer-substring-no-properties (point-min) (point-max)))))
+    (pcase-let ((`(,beg . ,end) (lsp-ltex-plus--document-region-or-end)))
+      (save-restriction
+        (widen)
+        (buffer-substring-no-properties beg end)))))
 
 (defun lsp-ltex-plus--document-open-p (&optional buffer)
   "Return non-nil if BUFFER (default the current buffer) is open on the server."
@@ -578,15 +606,27 @@ are; a new server will be told about them when they next need one."
 ;; once, when it pauses.  A plain timer rather than an idle timer: it
 ;; behaves the same in a batch Emacs, where nothing is ever idle.
 
-(defun lsp-ltex-plus--after-change (&rest _)
-  "Note an edit to the current buffer; on `after-change-functions'.
-The edit itself is not looked at, see the comment above."
+(defun lsp-ltex-plus--schedule-change ()
+  "Arrange for the current buffer's document to be sent after the delay.
+Restarts the delay if a send is already pending."
   (when lsp-ltex-plus--document-uri
     (when lsp-ltex-plus--change-timer
       (cancel-timer lsp-ltex-plus--change-timer))
     (setq lsp-ltex-plus--change-timer
           (run-with-timer lsp-ltex-plus-change-delay nil
                           #'lsp-ltex-plus--send-changes (current-buffer)))))
+
+(defun lsp-ltex-plus--after-change (beg end &rest _)
+  "Note an edit from BEG to END in the current buffer; on `after-change-functions'.
+What the edit changed is not looked at, see the comment above; where it
+happened is, when the buffer names a region of itself as the document:
+an edit wholly outside that region -- output arriving above a comint
+prompt -- is not a change to the document and sends nothing."
+  (when lsp-ltex-plus--document-uri
+    (when-let* ((region (lsp-ltex-plus--document-region)))
+      (when (or (null lsp-ltex-plus--document-region-function)
+                (and (<= (car region) end) (<= beg (cdr region))))
+        (lsp-ltex-plus--schedule-change)))))
 
 (defun lsp-ltex-plus--send-changes (&optional buffer)
   "Send the text of BUFFER (default the current buffer) to the server now.
@@ -648,35 +688,46 @@ diagnostics were cleared because the buffer left the server.")
 
 (defun lsp-ltex-plus--position-to-point (position &optional buffer)
   "Return the point in BUFFER (default the current buffer) at the LSP POSITION.
-POSITION is a plist of `:line' and `:character'.  A line past the end
-of the buffer gives the end of the buffer; a character past the end of
-its line gives the end of that line.  Narrowing is ignored."
+POSITION is a plist of `:line' and `:character', relative to the
+document region: line 0 starts at the region's start, which for a
+comint buffer is just after the prompt.  A line past the end of the
+document gives its end; a character past the end of its line gives the
+end of that line.  Narrowing is ignored."
   (with-current-buffer (or buffer (current-buffer))
-    (save-excursion
-      (save-restriction
-        (widen)
-        (goto-char (point-min))
-        (if (/= 0 (forward-line (plist-get position :line)))
-            (point-max)
-          (let ((units (plist-get position :character))
-                (end (line-end-position)))
-            (while (and (> units 0) (< (point) end))
-              (setq units (- units (if (> (char-after) #xFFFF) 2 1)))
-              (forward-char 1))
-            (point)))))))
+    (pcase-let ((`(,dbeg . ,dend) (lsp-ltex-plus--document-region-or-end))
+                (line (plist-get position :line)))
+      (save-excursion
+        (save-restriction
+          (widen)
+          (goto-char dbeg)
+          ;; `forward-line' with 0 would go to the start of the line, which
+          ;; for a region starting mid-line is before the document.
+          (if (and (> line 0) (/= 0 (forward-line line)))
+              dend
+            (let ((units (plist-get position :character))
+                  (end (min (line-end-position) dend)))
+              (when (> (point) dend)
+                (goto-char dend))
+              (while (and (> units 0) (< (point) end))
+                (setq units (- units (if (> (char-after) #xFFFF) 2 1)))
+                (forward-char 1))
+              (point))))))))
 
 (defun lsp-ltex-plus--point-to-position (&optional point buffer)
   "Return the LSP position of POINT in BUFFER, both defaulting to the current.
-The inverse of `lsp-ltex-plus--position-to-point'; narrowing is ignored."
+The inverse of `lsp-ltex-plus--position-to-point', relative to the
+document region; narrowing is ignored."
   (with-current-buffer (or buffer (current-buffer))
-    (save-excursion
-      (save-restriction
-        (widen)
-        (goto-char (or point (point)))
-        (list :line (1- (line-number-at-pos nil t))
-              :character (lsp-ltex-plus--utf16-width
-                          (buffer-substring-no-properties (line-beginning-position)
-                                                          (point))))))))
+    (pcase-let ((`(,dbeg . ,_) (lsp-ltex-plus--document-region-or-end)))
+      (save-excursion
+        (save-restriction
+          (widen)
+          (goto-char (max dbeg (or point (point))))
+          (let* ((line (- (line-number-at-pos nil t) (line-number-at-pos dbeg t)))
+                 (origin (if (= line 0) dbeg (line-beginning-position))))
+            (list :line line
+                  :character (lsp-ltex-plus--utf16-width
+                              (buffer-substring-no-properties origin (point))))))))))
 
 (defun lsp-ltex-plus--diagnostic-region (diagnostic &optional buffer)
   "Return (BEG . END), the points DIAGNOSTIC spans in BUFFER.
