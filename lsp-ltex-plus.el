@@ -77,6 +77,7 @@
 (require 'lsp-ltex-plus-settings)
 (require 'lsp-ltex-plus-conn)
 (require 'lsp-ltex-plus-diag)
+(require 'lsp-ltex-plus-actions)
 
 ;;;; -- Setup and reload -------------------------------------------------------
 
