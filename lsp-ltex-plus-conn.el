@@ -373,6 +373,11 @@ Incremented on every `didChange', as the protocol requires.")
   "The timer that will send this buffer's pending edits, or nil.
 See the Edits section below.")
 
+(defvar-local lsp-ltex-plus--diagnostics nil
+  "The diagnostics the server last published for this buffer, as a list.
+Each is the protocol's diagnostic object, a plist, untouched; see the
+Diagnostics section below for reading positions out of one.")
+
 (defun lsp-ltex-plus--language-id (&optional buffer)
   "Return the LSP language id for BUFFER (default the current buffer).
 Read from `lsp-ltex-plus-major-modes'; a mode not listed there is sent
@@ -457,7 +462,10 @@ Clears the identity, the hooks and any edit still waiting to be sent."
         lsp-ltex-plus--document-version 0)
   (remove-hook 'kill-buffer-hook #'lsp-ltex-plus--close-document t)
   (remove-hook 'after-change-functions #'lsp-ltex-plus--after-change t)
-  (remove-hook 'after-save-hook #'lsp-ltex-plus--after-save t))
+  (remove-hook 'after-save-hook #'lsp-ltex-plus--after-save t)
+  (when lsp-ltex-plus--diagnostics
+    (setq lsp-ltex-plus--diagnostics nil)
+    (run-hook-with-args 'lsp-ltex-plus--diagnostics-functions (current-buffer))))
 
 (defun lsp-ltex-plus--close-document (&optional buffer)
   "Close BUFFER (default the current buffer) on the server and forget it.
@@ -539,6 +547,95 @@ check."
       (jsonrpc-notify conn 'textDocument/didSave
                       (list :textDocument (list :uri uri))))))
 
+;;;; -- Diagnostics -------------------------------------------------------------
+
+;; The server pushes diagnostics; nothing here asks for them.  They are
+;; kept per buffer exactly as they arrived and handed to whoever
+;; registered on the hook -- the flymake backend, later a flycheck
+;; checker -- which converts them to what its front-end wants.
+;;
+;; Positions on the wire are a line and a character offset, the offset
+;; counted in UTF-16 code units as the protocol's default and what this
+;; client declared.  A character outside the Basic Multilingual Plane,
+;; an emoji say, is one Emacs character but two code units; the two
+;; conversions below walk the line character by character so that text
+;; after such a character is still underlined in the right place.
+
+(defvar lsp-ltex-plus--diagnostics-functions nil
+  "Functions called with a buffer whenever its diagnostics change.
+Called after a publish from the server has been stored, and after the
+diagnostics were cleared because the buffer left the server.")
+
+(defun lsp-ltex-plus--utf16-width (string)
+  "Return the length of STRING in UTF-16 code units."
+  (let ((units 0))
+    (dotimes (i (length string))
+      (setq units (+ units (if (> (aref string i) #xFFFF) 2 1))))
+    units))
+
+(defun lsp-ltex-plus--position-to-point (position &optional buffer)
+  "Return the point in BUFFER (default the current buffer) at the LSP POSITION.
+POSITION is a plist of `:line' and `:character'.  A line past the end
+of the buffer gives the end of the buffer; a character past the end of
+its line gives the end of that line.  Narrowing is ignored."
+  (with-current-buffer (or buffer (current-buffer))
+    (save-excursion
+      (save-restriction
+        (widen)
+        (goto-char (point-min))
+        (if (/= 0 (forward-line (plist-get position :line)))
+            (point-max)
+          (let ((units (plist-get position :character))
+                (end (line-end-position)))
+            (while (and (> units 0) (< (point) end))
+              (setq units (- units (if (> (char-after) #xFFFF) 2 1)))
+              (forward-char 1))
+            (point)))))))
+
+(defun lsp-ltex-plus--point-to-position (&optional point buffer)
+  "Return the LSP position of POINT in BUFFER, both defaulting to the current.
+The inverse of `lsp-ltex-plus--position-to-point'; narrowing is ignored."
+  (with-current-buffer (or buffer (current-buffer))
+    (save-excursion
+      (save-restriction
+        (widen)
+        (goto-char (or point (point)))
+        (list :line (1- (line-number-at-pos nil t))
+              :character (lsp-ltex-plus--utf16-width
+                          (buffer-substring-no-properties (line-beginning-position)
+                                                          (point))))))))
+
+(defun lsp-ltex-plus--diagnostic-region (diagnostic &optional buffer)
+  "Return (BEG . END), the points DIAGNOSTIC spans in BUFFER.
+An empty range is widened to one character where it can be, so that
+there is something to underline."
+  (let* ((range (plist-get diagnostic :range))
+         (beg (lsp-ltex-plus--position-to-point (plist-get range :start) buffer))
+         (end (lsp-ltex-plus--position-to-point (plist-get range :end) buffer)))
+    (when (= beg end)
+      (with-current-buffer (or buffer (current-buffer))
+        (setq end (min (1+ end) (save-restriction (widen) (point-max))))))
+    (cons beg end)))
+
+(defun lsp-ltex-plus--on-publish-diagnostics (params)
+  "Store the diagnostics in PARAMS with their buffer and run the hook.
+A publish for a document no buffer holds any more is dropped.  So is
+one that names a version older than the buffer's, since a newer check
+is already under way and its positions would be off; a publish with no
+version is always taken."
+  (let ((uri (plist-get params :uri))
+        (version (plist-get params :version)))
+    (if-let* ((buffer (lsp-ltex-plus--buffer-for-uri uri)))
+        (with-current-buffer buffer
+          (if (and version (< version lsp-ltex-plus--document-version))
+              (lsp-ltex-plus--log "Dropping diagnostics for %s v%s, buffer is at v%d"
+                                  (buffer-name) version lsp-ltex-plus--document-version)
+            (setq lsp-ltex-plus--diagnostics (append (plist-get params :diagnostics) nil))
+            (lsp-ltex-plus--log "%d diagnostics for %s"
+                                (length lsp-ltex-plus--diagnostics) (buffer-name))
+            (run-hook-with-args 'lsp-ltex-plus--diagnostics-functions buffer)))
+      (lsp-ltex-plus--log "Dropping diagnostics for %s, which no buffer holds" uri))))
+
 ;;;; -- What the server sends --------------------------------------------------
 
 ;; Both dispatchers receive the method as an interned symbol.  Requests the
@@ -567,6 +664,8 @@ asked for something this client does not do."
 (defun lsp-ltex-plus--handle-notification (_conn method params)
   "Act on the server's notification METHOD with PARAMS."
   (pcase method
+    ('textDocument/publishDiagnostics
+     (lsp-ltex-plus--on-publish-diagnostics params))
     ('window/logMessage
      (lsp-ltex-plus--log "server: %s" (plist-get params :message)))
     ('window/showMessage

@@ -422,5 +422,108 @@ This pins the fixture the diagnostics tests will rely on."
                    (cons 2 "Fine.\nNow teh end.\n")))
     (should (= 1 (length (ltex-plus-fake-diagnostics "Fine.\nNow teh end.\n"))))))
 
+;;;; -- Positions --------------------------------------------------------------
+
+(defmacro ltex-plus-conn-test--in-buffer (contents &rest body)
+  "Run BODY in a temporary buffer holding CONTENTS."
+  (declare (indent 1) (debug t))
+  `(with-temp-buffer
+     (insert ,contents)
+     ,@body))
+
+(ert-deftest ltex-plus-conn-test-positions-count-utf16-units ()
+  "A character outside the BMP is two code units, and text after it lands right.
+The buffer is \"ab\" then \"cd😀ef\"; the emoji at point 6 is two
+units, so character 4 on line 1 is the `e' at point 7."
+  (ltex-plus-conn-test--in-buffer "ab\ncd😀ef\n"
+    (should (= 4 (lsp-ltex-plus--position-to-point '(:line 1 :character 0))))
+    (should (= 6 (lsp-ltex-plus--position-to-point '(:line 1 :character 2))))
+    (should (= 7 (lsp-ltex-plus--position-to-point '(:line 1 :character 4))))
+    (should (= 8 (lsp-ltex-plus--position-to-point '(:line 1 :character 5))))
+    ;; And back.
+    (should (equal (lsp-ltex-plus--point-to-position 7) '(:line 1 :character 4)))
+    (should (equal (lsp-ltex-plus--point-to-position 1) '(:line 0 :character 0)))
+    (should (equal (lsp-ltex-plus--point-to-position 9) '(:line 1 :character 6)))))
+
+(ert-deftest ltex-plus-conn-test-positions-past-the-end-are-clamped ()
+  "A line or character the buffer does not have gives the nearest end.
+The server checks the text it was last sent; the buffer may already be
+shorter, and a position must never signal."
+  (ltex-plus-conn-test--in-buffer "ab\ncd\n"
+    (should (= 6 (lsp-ltex-plus--position-to-point '(:line 1 :character 40))))
+    (should (= 7 (lsp-ltex-plus--position-to-point '(:line 9 :character 0))))))
+
+(ert-deftest ltex-plus-conn-test-positions-ignore-narrowing ()
+  "Positions are relative to the whole buffer, which is what the server holds."
+  (ltex-plus-conn-test--in-buffer "ab\ncd\nef\n"
+    (narrow-to-region 4 6)
+    (should (= 7 (lsp-ltex-plus--position-to-point '(:line 2 :character 0))))
+    (should (equal (lsp-ltex-plus--point-to-position 7) '(:line 2 :character 0)))))
+
+(ert-deftest ltex-plus-conn-test-an-empty-range-still-covers-something ()
+  "A zero-width diagnostic is widened to one character so it can be shown."
+  (ltex-plus-conn-test--in-buffer "abc\n"
+    (should (equal (lsp-ltex-plus--diagnostic-region
+                    '(:range (:start (:line 0 :character 1) :end (:line 0 :character 1))))
+                   '(2 . 3)))
+    (should (equal (lsp-ltex-plus--diagnostic-region
+                    '(:range (:start (:line 0 :character 1) :end (:line 0 :character 3))))
+                   '(2 . 4)))))
+
+;;;; -- Receiving diagnostics ----------------------------------------------------
+
+(ert-deftest ltex-plus-conn-test-a-publish-is-stored-with-its-buffer ()
+  "Diagnostics land in the buffer the URI names, and the hook hears of it.
+The hook is installed before the document opens: the fake publishes as
+soon as it has the text, and a hook bound later could miss it."
+  (ltex-plus-fake-with-connection
+    (ltex-plus-conn-test--with-open-file buffer "Hello teh world.\n"
+      (let ((told nil))
+        (let ((lsp-ltex-plus--diagnostics-functions (list (lambda (b) (push b told)))))
+          (lsp-ltex-plus--open-document buffer)
+          (ltex-plus-fake-wait-for (lambda () told)))
+        (should (equal told (list buffer)))
+        (with-current-buffer buffer
+        (should (= 1 (length lsp-ltex-plus--diagnostics)))
+        (should (equal (lsp-ltex-plus--diagnostic-region (car lsp-ltex-plus--diagnostics))
+                       '(7 . 10)))
+          (should (string-match-p "spelling" (plist-get (car lsp-ltex-plus--diagnostics)
+                                                        :message))))))))
+
+(ert-deftest ltex-plus-conn-test-a-publish-for-no-buffer-is-dropped ()
+  "A publish naming a URI nothing holds is ignored, without an error."
+  (ltex-plus-fake-with-connection
+    (ltex-plus-fake-ready-connection)
+    (let ((told nil))
+      (let ((lsp-ltex-plus--diagnostics-functions (list (lambda (b) (push b told)))))
+        (ltex-plus-fake-publish "file:///nowhere/at/all.md"
+                                (ltex-plus-fake-diagnostics "teh"))
+        (accept-process-output nil 0.2))
+      (should-not told))))
+
+(ert-deftest ltex-plus-conn-test-a-stale-publish-is-dropped ()
+  "A publish for an older version than the buffer's is not stored.
+One without a version is: the server is allowed to omit it."
+  (ltex-plus-conn-test--with-open-document buffer "Fine.\n"
+    (with-current-buffer buffer (setq lsp-ltex-plus--document-version 5))
+    (let ((uri (lsp-ltex-plus--buffer-uri buffer)))
+      (ltex-plus-fake-publish uri (ltex-plus-fake-diagnostics "teh") 3)
+      (accept-process-output nil 0.2)
+      (should-not (buffer-local-value 'lsp-ltex-plus--diagnostics buffer))
+      (ltex-plus-fake-publish uri (ltex-plus-fake-diagnostics "teh") nil)
+      (ltex-plus-fake-wait-for
+       (lambda () (buffer-local-value 'lsp-ltex-plus--diagnostics buffer))))))
+
+(ert-deftest ltex-plus-conn-test-closing-clears-diagnostics ()
+  "Leaving the server clears the stored diagnostics and says so on the hook."
+  (ltex-plus-conn-test--with-open-document buffer "Hello teh world.\n"
+    (ltex-plus-fake-wait-for
+     (lambda () (buffer-local-value 'lsp-ltex-plus--diagnostics buffer)))
+    (let ((told nil))
+      (let ((lsp-ltex-plus--diagnostics-functions (list (lambda (b) (push b told)))))
+        (lsp-ltex-plus--close-document buffer))
+      (should (equal told (list buffer)))
+      (should-not (buffer-local-value 'lsp-ltex-plus--diagnostics buffer)))))
+
 (provide 'ltex-plus-conn-test)
 ;;; ltex-plus-conn-test.el ends here
