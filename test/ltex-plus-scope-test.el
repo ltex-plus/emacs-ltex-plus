@@ -147,6 +147,51 @@ what other clients answer and what the server is written to accept."
     (should-not (lsp-ltex-plus--configuration-section "ltex.no.such.thing"))
     (should-not (lsp-ltex-plus--configuration-section "python"))))
 
+;;;; -- The server's own request -------------------------------------------------
+
+(ert-deftest ltex-plus-scope-test-custom-handler-answers-one-entry-per-item ()
+  "`ltex/workspaceSpecificConfiguration' replies with the four maps per item.
+When the client advertises the custom capability the server takes the
+four language-keyed settings from here alone, so a missing field means
+the document is checked against nothing."
+  (ltex-plus-test-reset)
+  (setq lsp-ltex-plus--dictionary-merged '(:en-US ["global-word"]))
+  (ltex-plus-scope-test--with-documents
+    (let ((reply (lsp-ltex-plus--answer-workspace-specific-configuration
+                  (list :items (vector (list :scopeUri (lsp-ltex-plus--buffer-uri german))
+                                       (list :scopeUri (lsp-ltex-plus--buffer-uri plain)))))))
+      (should (vectorp reply))
+      (should (= 2 (length reply)))
+      (dolist (entry (append reply nil))
+        (dolist (field '(:dictionary :disabledRules :enabledRules :hiddenFalsePositives))
+          (should (plist-member entry field)))
+        (should (equal (ltex-plus-test-words (plist-get entry :dictionary))
+                       '("global-word")))))))
+
+(ert-deftest ltex-plus-scope-test-custom-handler-folds-in-the-project-list ()
+  "A project's own dictionary is in the entry for its document only.
+The other document, in a root with no list of its own, gets the global
+list alone; a dead document gets the global list too."
+  (ltex-plus-test-reset)
+  (setq lsp-ltex-plus--dictionary-merged '(:en-US ["global-word"]))
+  (ltex-plus-fake-with-connection
+    (ltex-plus-test-with-project
+        '((".dir-locals.el"
+           . "((nil . ((lsp-ltex-plus-project-dictionary-file . \".ltex/words.eld\"))))")
+          (".ltex/words.eld" . "(:en-US [\"Wittgenstein\"])")
+          ("doc.rst" . "text\n"))
+      (let ((inside (ltex-plus-test-visit (project-file "doc.rst"))))
+        (with-current-buffer inside (rst-mode))
+        (lsp-ltex-plus--open-document inside)
+        (ltex-plus-fake-wait-for (lambda () (ltex-plus-fake-received 'textDocument/didOpen)))
+        (let ((reply (lsp-ltex-plus--answer-workspace-specific-configuration
+                      (list :items (vector (list :scopeUri (lsp-ltex-plus--buffer-uri inside))
+                                           (list :scopeUri "file:///gone/doc.rst"))))))
+          (should (equal (ltex-plus-test-words (plist-get (aref reply 0) :dictionary))
+                         '("global-word" "Wittgenstein")))
+          (should (equal (ltex-plus-test-words (plist-get (aref reply 1) :dictionary))
+                         '("global-word"))))))))
+
 ;;;; -- Over the wire ----------------------------------------------------------
 
 (ert-deftest ltex-plus-scope-test-the-server-s-pull-is-answered-from-the-document ()
@@ -168,10 +213,11 @@ built in the right buffer."
         (should-not (eq (nth 2 entry) :error))
         (should (equal (plist-get (aref (nth 2 entry) 0) :language) "de-DE"))))))
 
-(ert-deftest ltex-plus-scope-test-a-refused-pull-would-stop-the-check ()
+(ert-deftest ltex-plus-scope-test-both-pulls-are-answered-before-the-check ()
   "The fake is as unforgiving as the real server about a refused pull.
-Pins the fixture: with the handler in place the check completes and
-diagnostics arrive; without it nothing would."
+Pins the fixture: with both handlers in place the check completes and
+diagnostics arrive; a refusal of either would end it.  Both replies for
+the document are recorded, and the custom one carries the four maps."
   (ltex-plus-fake-with-connection
     (ltex-plus-test-with-project '(("doc.rst" . "Hello teh world.\n"))
       (let ((buffer (ltex-plus-test-visit (project-file "doc.rst"))))
@@ -179,7 +225,16 @@ diagnostics arrive; without it nothing would."
         (lsp-ltex-plus--open-document buffer)
         (ltex-plus-fake-wait-for
          (lambda () (buffer-local-value 'lsp-ltex-plus--diagnostics buffer)))
-        (should (memq 'workspace/configuration ltex-plus-fake-strict-pulls))))))
+        (should (equal ltex-plus-fake-strict-pulls
+                       '(workspace/configuration ltex/workspaceSpecificConfiguration)))
+        (let* ((uri (lsp-ltex-plus--buffer-uri buffer))
+               (custom (seq-find (lambda (entry)
+                                   (and (equal (car entry) uri)
+                                        (eq (cadr entry) 'ltex/workspaceSpecificConfiguration)))
+                                 ltex-plus-fake-config-replies)))
+          (should custom)
+          (should-not (eq (nth 2 custom) :error))
+          (should (plist-member (aref (nth 2 custom) 0) :hiddenFalsePositives)))))))
 
 (provide 'ltex-plus-scope-test)
 ;;; ltex-plus-scope-test.el ends here

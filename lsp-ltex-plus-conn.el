@@ -675,6 +675,24 @@ null."
                            (plist-get value (intern (concat ":" step))))))))
      (t nil))))
 
+(defun lsp-ltex-plus--answer-workspace-specific-configuration (params)
+  "Answer the server's `ltex/workspaceSpecificConfiguration' request PARAMS.
+The server's own request, mirroring VS Code's handler: for each item
+the four language-keyed maps -- dictionary, disabled rules, enabled
+rules, hidden false positives -- as `lsp-ltex-plus--workspace-specific-entry'
+builds them in the document's buffer.  Once the client has advertised
+the custom capability the server takes these four settings from here
+alone and ignores what `workspace/configuration' said about them, so
+this reply is what decides which dictionary a document is checked
+against."
+  (lsp-ltex-plus--log "ltex/workspaceSpecificConfiguration: %S" params)
+  (vconcat
+   (mapcar (lambda (item)
+             (lsp-ltex-plus--call-in-document-context
+              (plist-get item :scopeUri)
+              #'lsp-ltex-plus--workspace-specific-entry))
+           (plist-get params :items))))
+
 (defun lsp-ltex-plus--answer-configuration (params)
   "Answer the server's `workspace/configuration' request PARAMS.
 PARAMS carries `items', a vector of (scopeUri URI, section SECTION).
@@ -704,6 +722,8 @@ asked for something this client does not do."
   (pcase method
     ('workspace/configuration
      (lsp-ltex-plus--answer-configuration params))
+    ('ltex/workspaceSpecificConfiguration
+     (lsp-ltex-plus--answer-workspace-specific-configuration params))
     ((or 'client/registerCapability 'client/unregisterCapability
          'window/workDoneProgress/create)
      nil)

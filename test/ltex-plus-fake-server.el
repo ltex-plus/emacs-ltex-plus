@@ -64,7 +64,8 @@ the client refused the request.")
 (defvar ltex-plus-fake-pull-configuration t
   "Whether to pull configuration before publishing, as the real server does.")
 
-(defvar ltex-plus-fake-strict-pulls '(workspace/configuration)
+(defvar ltex-plus-fake-strict-pulls '(workspace/configuration
+                                      ltex/workspaceSpecificConfiguration)
   "Pulls whose refusal aborts the check, as it does on the real server.
 ltex-ls-plus waits on the reply and gives up the check with a logged
 exception when it is an error; a fake that published anyway would let
