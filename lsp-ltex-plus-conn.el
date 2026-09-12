@@ -400,14 +400,29 @@ as plain text, which the server checks as prose."
                   lsp-ltex-plus-major-modes))
       "plaintext"))
 
+(defun lsp-ltex-plus--make-fileless-uri ()
+  "Return a fresh URI for a buffer that visits no file.
+The server treats a document's URI as an opaque name -- it checked
+documents under this scheme, under `untitled:' and under `file://'
+alike when asked -- so a scheme of the package's own makes the identity
+unmistakably synthetic and keeps it clear of any real file.  The Emacs
+process id and a counter make it unique within and across sessions;
+the buffer name is not used, since it can be renamed or collide."
+  (format "ltex-plus://buffer/%d-%d" (emacs-pid)
+          (setq lsp-ltex-plus--fileless-counter (1+ lsp-ltex-plus--fileless-counter))))
+
 (defun lsp-ltex-plus--buffer-uri (&optional buffer)
   "Return the URI BUFFER (default the current buffer) has or would have.
 The URI it is already open under if it is; otherwise the `file://' URI
-of the file it visits.  A buffer visiting no file has no URI yet."
+of the file it visits; otherwise the synthetic identity the buffer was
+given as a file-less document, if it has been given one.  A file-less
+buffer that has never been opened has no URI yet; `lsp-ltex-plus--send-did-open'
+invents one."
   (with-current-buffer (or buffer (current-buffer))
     (or lsp-ltex-plus--document-uri
         (and buffer-file-name
-             (lsp-ltex-plus--path-to-uri buffer-file-name)))))
+             (lsp-ltex-plus--path-to-uri buffer-file-name))
+        lsp-ltex-plus--fileless-uri)))
 
 (defun lsp-ltex-plus--buffer-for-uri (uri)
   "Return the live buffer open under URI, or nil.
@@ -448,16 +463,17 @@ that is already open does nothing."
 (defun lsp-ltex-plus--send-did-open (conn buffer)
   "Register BUFFER on CONN and send its `didOpen'."
   (with-current-buffer buffer
-    (let ((uri (lsp-ltex-plus--buffer-uri buffer)))
-      (unless uri
-        (error "[lsp-ltex-plus] Buffer %s has no file and cannot be opened yet"
-               (buffer-name buffer)))
+    (let ((uri (or (lsp-ltex-plus--buffer-uri buffer)
+                   (setq lsp-ltex-plus--fileless-uri (lsp-ltex-plus--make-fileless-uri)))))
       (setq lsp-ltex-plus--document-uri uri
             lsp-ltex-plus--document-version 1)
       (puthash uri buffer lsp-ltex-plus--documents)
       (add-hook 'kill-buffer-hook #'lsp-ltex-plus--close-document nil t)
       (add-hook 'after-change-functions #'lsp-ltex-plus--after-change nil t)
       (add-hook 'after-save-hook #'lsp-ltex-plus--after-save nil t)
+      (add-hook 'change-major-mode-hook #'lsp-ltex-plus--before-major-mode-change nil t)
+      (add-hook 'after-set-visited-file-name-hook
+                #'lsp-ltex-plus--after-visited-file-name-change nil t)
       (lsp-ltex-plus--log "didOpen %s as %s" (buffer-name buffer) (lsp-ltex-plus--language-id))
       (jsonrpc-notify conn 'textDocument/didOpen
                       (list :textDocument
@@ -477,6 +493,9 @@ Clears the identity, the hooks and any edit still waiting to be sent."
   (remove-hook 'kill-buffer-hook #'lsp-ltex-plus--close-document t)
   (remove-hook 'after-change-functions #'lsp-ltex-plus--after-change t)
   (remove-hook 'after-save-hook #'lsp-ltex-plus--after-save t)
+  (remove-hook 'change-major-mode-hook #'lsp-ltex-plus--before-major-mode-change t)
+  (remove-hook 'after-set-visited-file-name-hook
+               #'lsp-ltex-plus--after-visited-file-name-change t)
   (when lsp-ltex-plus--diagnostics
     (setq lsp-ltex-plus--diagnostics nil)
     (run-hook-with-args 'lsp-ltex-plus--diagnostics-functions (current-buffer))))
@@ -495,6 +514,46 @@ tell."
           (lsp-ltex-plus--log "didClose %s" (buffer-name buffer))
           (jsonrpc-notify conn 'textDocument/didClose
                           (list :textDocument (list :uri uri))))))))
+
+(defvar lsp-ltex-plus--document-closing-functions nil
+  "Functions called with no arguments in a buffer about to lose its document.
+Run by `lsp-ltex-plus--before-major-mode-change', before the buffer's
+local variables are discarded, so that a front-end can clear what it
+shows; the minor mode adds the flymake teardown here.")
+
+(defun lsp-ltex-plus--before-major-mode-change ()
+  "Close the current buffer's document before its major mode changes.
+On `change-major-mode-hook', buffer-locally.  A change of major mode
+discards every buffer-local variable, this package's identity and hooks
+among them, while the server would still hold the document open under
+a URI nothing would update or close again.  Closing here, while the
+identity is still known, leaves nothing behind; when the mode has
+changed, the dispatcher decides afresh whether to check the buffer, and
+a file-less buffer saved under a name that changes its mode reopens
+under its real name."
+  (when lsp-ltex-plus--document-uri
+    (run-hooks 'lsp-ltex-plus--document-closing-functions)
+    (lsp-ltex-plus--close-document)))
+
+(defun lsp-ltex-plus--after-visited-file-name-change ()
+  "Move the current buffer's document to its new name, if the name changed.
+On `after-set-visited-file-name-hook', buffer-locally, and marked as a
+permanent local hook so that it survives the major-mode change saving
+under a new name can bring.  A file-less buffer saved to a file, or a
+file renamed with \[write-file], is closed under the URI the server
+knew it by and opened again under the URI of the file it now visits.
+Nothing happens when the buffer is not open, when its name did not
+change, or when the document was already reopened under the new name."
+  (when-let* ((current lsp-ltex-plus--document-uri)
+              (expected (and buffer-file-name
+                             (lsp-ltex-plus--path-to-uri buffer-file-name))))
+    (unless (equal current expected)
+      (lsp-ltex-plus--log "%s is now %s; reopening" (buffer-name) buffer-file-name)
+      (lsp-ltex-plus--close-document)
+      (setq lsp-ltex-plus--fileless-uri nil)
+      (lsp-ltex-plus--open-document))))
+
+(put 'lsp-ltex-plus--after-visited-file-name-change 'permanent-local-hook t)
 
 (defun lsp-ltex-plus--forget-documents (_conn)
   "Drop every document from the table once the server is gone.

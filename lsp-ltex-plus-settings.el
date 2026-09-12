@@ -636,14 +636,16 @@ Note: These are global surgical patches affecting all LSP servers."
   "Timestamp of when `lsp-ltex-plus--setup' was executed.")
 
 (defvar-local lsp-ltex-plus--fileless-uri nil
-  "Synthetic file:// URI assigned to this file-less buffer, or nil.
-Set by `lsp-ltex-plus--setup-fileless-buffer' and reused for the lifetime
-of the buffer (or until it is saved to a real file).")
+  "The synthetic URI this file-less buffer is known by, or nil.
+Invented the first time the buffer is opened on the server and kept
+while the buffer lives, so that turning the mode off and on reuses the
+same identity; cleared when the buffer is saved to a file, after which
+the file's own URI takes over.")
 
 (defvar lsp-ltex-plus--fileless-counter 0
   "Monotonic counter for generating unique file-less buffer URIs.
-Combined with the Emacs PID so synthetic paths never collide within or
-across sessions; see `lsp-ltex-plus--make-fileless-uri'.")
+Combined with the Emacs PID so synthetic identities never collide within
+or across sessions; see `lsp-ltex-plus--make-fileless-uri'.")
 
 (defvar-local lsp-ltex-plus--comint-active nil
   "Non-nil when this comint buffer's input region is being checked.

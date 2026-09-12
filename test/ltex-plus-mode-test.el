@@ -111,9 +111,12 @@ where a typo in it shows up."
 
 ;;;; -- Registering an unknown major mode --------------------------------------
 
-;; These run with the server present but the buffer visiting no file, so
-;; the mode registers the major mode and then declines for want of a
-;; file; the registration is what is under test.
+;; These run with the binary apparently installed but opening the document
+;; stubbed out, so the mode registers the major mode and stops short of
+;; the server; the registration is what is under test.  The stub matters
+;; on a machine that has a real ltex-ls-plus on PATH: without it these
+;; tests would start a JVM, and later tests would reuse it in place of
+;; the fake.
 
 (defmacro ltex-plus-mode-test--with-server-present (&rest body)
   "Run BODY with a temp buffer current and the binary apparently installed."
@@ -121,7 +124,8 @@ where a typo in it shows up."
   `(let ((lsp-ltex-plus-major-modes (copy-tree lsp-ltex-plus-major-modes))
          (inhibit-message t))
      (cl-letf (((symbol-function 'lsp-ltex-plus--server-executable)
-                (lambda (&rest _) "ltex-ls-plus")))
+                (lambda (&rest _) "ltex-ls-plus"))
+               ((symbol-function 'lsp-ltex-plus--open-document) #'ignore))
        (with-temp-buffer
          ,@body))))
 
@@ -155,11 +159,21 @@ is far likelier to be a writing context than a language."
       (lsp-ltex-plus-mode 1)
       (should (equal lsp-ltex-plus-major-modes before)))))
 
-(ert-deftest ltex-plus-mode-test-a-file-less-buffer-is-declined-for-now ()
-  "A buffer visiting no file is left alone until its support returns.
+(ert-deftest ltex-plus-mode-test-a-file-less-buffer-is-declined-when-opted-out ()
+  "With `lsp-ltex-plus-check-fileless-buffers' off, a buffer with no file is left alone.
 The mode variable is left nil, so nothing claims to be checking it."
   (ltex-plus-mode-test--with-server-present
     (setq major-mode 'markdown-mode)
+    (let ((lsp-ltex-plus-check-fileless-buffers nil))
+      (lsp-ltex-plus-mode 1))
+    (should-not lsp-ltex-plus-mode)))
+
+(ert-deftest ltex-plus-mode-test-a-comint-buffer-is-declined-for-now ()
+  "A comint buffer is left alone until its input-region support returns.
+Checked whole it would be checked output and all, which is worse than
+not at all."
+  (ltex-plus-mode-test--with-server-present
+    (comint-mode)
     (lsp-ltex-plus-mode 1)
     (should-not lsp-ltex-plus-mode)))
 

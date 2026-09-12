@@ -252,10 +252,15 @@ major mode is known to the table."
                      " or set `lsp-ltex-plus-ls-plus-executable' to the binary's path")
              lsp-ltex-plus-ls-plus-executable)
     (setq lsp-ltex-plus-mode nil))
-   ((not buffer-file-name)
-    ;; File-less and comint buffers get their identities back in a later
-    ;; step of the move to jsonrpc; until then they are left alone.
-    (lsp-ltex-plus--log "Not checking %s: it visits no file" (buffer-name))
+   ((and (not buffer-file-name) (not lsp-ltex-plus-check-fileless-buffers))
+    (lsp-ltex-plus--log "Not checking %s: it visits no file and the option is off"
+                        (buffer-name))
+    (setq lsp-ltex-plus-mode nil))
+   ((and (not buffer-file-name) (derived-mode-p 'comint-mode))
+    ;; Comint buffers get their input-region identity back in the next
+    ;; step of the move to jsonrpc; until then they are left alone rather
+    ;; than checked whole, output and all.
+    (lsp-ltex-plus--log "Not checking %s: comint support is pending" (buffer-name))
     (setq lsp-ltex-plus-mode nil))
    (t
     (lsp-ltex-plus--log "Enabling LTeX+ in %s" (buffer-name))
@@ -277,6 +282,11 @@ should the mode come back; `lsp-ltex-plus-shutdown-server' stops it."
   (lsp-ltex-plus--log "Disabling LTeX+ in %s" (buffer-name))
   (lsp-ltex-plus--close-document)
   (lsp-ltex-plus--flymake-detach))
+
+;; A major-mode change discards the buffer's local variables, the flymake
+;; backend and its report function among them; clearing the underlines
+;; first is the only chance to do so.
+(add-hook 'lsp-ltex-plus--document-closing-functions #'lsp-ltex-plus--flymake-detach)
 
 ;;;###autoload
 (define-minor-mode lsp-ltex-plus-mode
