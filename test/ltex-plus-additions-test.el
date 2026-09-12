@@ -187,6 +187,120 @@ produce a message, not a backtrace in the middle of the user's editing."
       (lsp-ltex-plus--run-action '(:title "Odd" :command (:command "java.organizeImports"))))
     (should (string-match-p "java.organizeImports" said))))
 
+;;;; -- Offering both destinations ---------------------------------------------
+
+(ert-deftest ltex-plus-additions-test-suggestion-splits-in-two ()
+  "One suggestion becomes two, project first, without touching the original.
+The server's own object may be shared with whatever holds the reply;
+both variants are built on copies."
+  (ltex-plus-additions-test--in-project
+    (with-current-buffer buffer
+      (let* ((original (ltex-plus-test-suggestion
+                        "_ltex.addToDictionary" "Add 'Godel'" :words '("Godel")))
+             (split (lsp-ltex-plus--expand-suggestions (list original))))
+        (should (= (length split) 2))
+        (should (equal (ltex-plus-test-titles split)
+                       '("Add 'Godel' to project dictionary"
+                         "Add 'Godel' to global dictionary")))
+        (should (equal (plist-get original :title) "Add 'Godel'"))
+        (should-not (plist-get (plist-get original :command)
+                               lsp-ltex-plus--target-marker))))))
+
+(ert-deftest ltex-plus-additions-test-each-variant-writes-to-its-own-file ()
+  "Picking a variant writes to exactly one file, never both."
+  (ltex-plus-additions-test--in-project
+    (with-current-buffer buffer
+      (let ((split (lsp-ltex-plus--expand-suggestions
+                    (list (ltex-plus-test-suggestion
+                           "_ltex.addToDictionary" "Add 'Godel'"
+                           :words '("Godel"))))))
+        (ltex-plus-test-accept (nth 0 split))
+        (should (equal (ltex-plus-test-words
+                        (ltex-plus-test-read-file project-dictionary))
+                       '("Godel")))
+        (should-not (ltex-plus-additions-test--global-words))
+        (ltex-plus-test-reset)
+        (delete-file project-dictionary)
+        (ltex-plus-test-accept (nth 1 split))
+        (should (equal (ltex-plus-additions-test--global-words) '("Godel")))
+        (should-not (ltex-plus-test-read-file project-dictionary))))))
+
+(ert-deftest ltex-plus-additions-test-titles-name-the-scope ()
+  "Every kind gets a pair of titles naming project and global.
+The vocabulary matches the setting's own values -- project and global,
+never \"personal\": the distinction is scope, not ownership."
+  (ltex-plus-additions-test--in-project
+    (with-current-buffer buffer
+      (let ((lsp-ltex-plus-project-disabled-rules-file ".ltex/disabled-rules.eld")
+            (lsp-ltex-plus-project-hidden-false-positives-file ".ltex/fps.eld"))
+        (should (equal (ltex-plus-test-titles
+                        (lsp-ltex-plus--expand-suggestions
+                         (list (ltex-plus-test-suggestion
+                                "_ltex.disableRules" "Disable rule"
+                                :ruleIds '("EN_QUOTES")))))
+                       '("Disable rule for this project" "Disable rule globally")))
+        (should (equal (ltex-plus-test-titles
+                        (lsp-ltex-plus--expand-suggestions
+                         (list (ltex-plus-test-suggestion
+                                "_ltex.hideFalsePositives" "Hide"
+                                :falsePositives '("{}")))))
+                       '("Hide false positive for this project"
+                         "Hide false positive globally")))))))
+
+(ert-deftest ltex-plus-additions-test-title-counts-several-words ()
+  "A suggestion carrying more than one word says how many."
+  (ltex-plus-additions-test--in-project
+    (with-current-buffer buffer
+      (should (equal (ltex-plus-test-titles
+                      (lsp-ltex-plus--expand-suggestions
+                       (list (ltex-plus-test-suggestion
+                              "_ltex.addToDictionary" "Add"
+                              :words '("Godel" "Kripke")))))
+                     '("Add 2 words to project dictionary"
+                       "Add 2 words to global dictionary"))))))
+
+(ert-deftest ltex-plus-additions-test-no-project-file-means-no-split ()
+  "With nowhere else to write, the single suggestion is left as it was.
+Nothing changes for a project that keeps no lists of its own."
+  (ltex-plus-additions-test--in-project
+    (with-current-buffer outside
+      (let* ((original (ltex-plus-test-suggestion
+                        "_ltex.addToDictionary" "Add 'x'" :words '("x")))
+             (result (lsp-ltex-plus--expand-suggestions (list original))))
+        (should (= (length result) 1))
+        (should (eq (car result) original))))))
+
+(ert-deftest ltex-plus-additions-test-other-values-do-not-split ()
+  "Only `either-allowing-user-choice' splits; the other two decide silently."
+  (ltex-plus-additions-test--in-project
+    (with-current-buffer buffer
+      (dolist (value '(globally-defined per-project-when-specified))
+        (let ((lsp-ltex-plus-save-additions-to value))
+          (should (= 1 (length (lsp-ltex-plus--expand-suggestions
+                                (list (ltex-plus-test-suggestion
+                                       "_ltex.addToDictionary" "Add 'x'"
+                                       :words '("x"))))))))))))
+
+(ert-deftest ltex-plus-additions-test-other-actions-pass-through ()
+  "A replacement, or anything else, comes back as the same object, not a copy."
+  (ltex-plus-additions-test--in-project
+    (with-current-buffer buffer
+      (let* ((edit '(:title "Use 'the'" :kind "quickfix.ltex.acceptSuggestions"
+                     :edit (:documentChanges [])))
+             (odd '(:title "Odd" :command (:title "no command name")))
+             (input (list edit odd))
+             (result (lsp-ltex-plus--expand-suggestions input)))
+        (should (= (length result) 2))
+        (should (cl-every #'eq result input))))))
+
+(ert-deftest ltex-plus-additions-test-sequence-type-is-preserved ()
+  "A vector comes back a vector, a list a list; the server sends a vector."
+  (ltex-plus-additions-test--in-project
+    (with-current-buffer buffer
+      (should (vectorp (lsp-ltex-plus--expand-suggestions (vector '(:title "x")))))
+      (should (listp (lsp-ltex-plus--expand-suggestions (list '(:title "x")))))
+      (should (= 0 (length (lsp-ltex-plus--expand-suggestions nil)))))))
+
 ;;;; -- The marker -------------------------------------------------------------
 
 (ert-deftest ltex-plus-additions-test-marker-overrides-the-setting ()

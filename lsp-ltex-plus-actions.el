@@ -230,5 +230,94 @@ has the edit applied first."
   (when (and (null (plist-get action :edit)) (null (plist-get action :command)))
     (message "[lsp-ltex-plus] The action %S does nothing" (plist-get action :title))))
 
+;;;; -- Offering both destinations as separate suggestions ---------------------
+
+;; Under `either-allowing-user-choice', a suggestion that could be saved
+;; either way is shown twice -- once saving to this project only, once
+;; saving everywhere -- so the choice is made by picking a suggestion
+;; rather than by answering a question after picking one.  The two copies
+;; differ in their title and in a marker naming the file they save to;
+;; the handler reads that marker back.  The menu is this package's own,
+;; so there is no second place that could count the suggestions
+;; differently, and nothing to advise.
+
+(defun lsp-ltex-plus--suggestion-command (action)
+  "Return the command object of code ACTION, or nil when it carries none."
+  (let ((command (plist-get action :command)))
+    (and (consp command) (keywordp (car command)) command)))
+
+(defun lsp-ltex-plus--command-entries (command key)
+  "Return every entry COMMAND carries under KEY, across all languages.
+The server groups them by language code; for a title we only care how
+many there are and, when there is one, what it says."
+  (let* ((args (plist-get command :arguments))
+         (arg0 (and (vectorp args) (> (length args) 0) (aref args 0)))
+         (by-language (and arg0 (plist-get arg0 key)))
+         (entries nil))
+    (while by-language
+      (pop by-language)
+      (setq entries (append entries (append (pop by-language) nil))))
+    entries))
+
+(defun lsp-ltex-plus--suggestion-title (kind command target)
+  "Title for the TARGET variant of a KIND suggestion carried by COMMAND.
+TARGET is the string \"global\" or \"project\".
+
+The title is composed here rather than derived from the one the server
+sent, because that one is localised -- \"Add \\='x\\=' to dictionary\" in
+English, \"\\='x\\=' zum Wörterbuch hinzufügen\" in German -- and there is
+no reliable place to insert the scope into it.  The cost is that these
+two entries read in English whatever locale the server is speaking;
+every other suggestion in the list, this one included when it is not
+split, still comes through in the server\\='s own words."
+  (let ((where (if (equal target "project") "project" "global")))
+    (pcase kind
+      ('dictionary
+       (let ((words (lsp-ltex-plus--command-entries command :words)))
+         (if (= (length words) 1)
+             (format "Add '%s' to %s dictionary" (car words) where)
+           (format "Add %d words to %s dictionary" (length words) where))))
+      ('disabled-rules
+       (if (equal where "project")
+           "Disable rule for this project"
+         "Disable rule globally"))
+      ('hidden-false-positives
+       (if (equal where "project")
+           "Hide false positive for this project"
+         "Hide false positive globally"))
+      (_ (plist-get command :title)))))
+
+(defun lsp-ltex-plus--suggestion-variant (action command kind target)
+  "Return a copy of ACTION for KIND that saves to TARGET.
+TARGET is the string \"global\" or \"project\"; COMMAND is ACTION\\='s
+command object.  Both plists are copied before being changed, so the
+suggestion the server sent is left alone."
+  (let* ((tagged (plist-put (copy-sequence command) lsp-ltex-plus--target-marker target))
+         (copy (copy-sequence action)))
+    (setq copy (plist-put copy :title (lsp-ltex-plus--suggestion-title kind command target)))
+    (plist-put copy :command tagged)))
+
+(defun lsp-ltex-plus--split-suggestion (action)
+  "Return ACTION as a list of two suggestions, or nil to leave it alone.
+Splits only when the user asked to choose each time and this project
+actually keeps its own file for the kind of entry ACTION would add --
+otherwise there is nothing to choose between."
+  (when (eq lsp-ltex-plus-save-additions-to 'either-allowing-user-choice)
+    (when-let* ((command (lsp-ltex-plus--suggestion-command action))
+                (kind (lsp-ltex-plus--kind-for-command (plist-get command :command))))
+      (when (lsp-ltex-plus--project-file-for kind)
+        (list (lsp-ltex-plus--suggestion-variant action command kind "project")
+              (lsp-ltex-plus--suggestion-variant action command kind "global"))))))
+
+(defun lsp-ltex-plus--expand-suggestions (actions)
+  "Return ACTIONS with this package\\='s suggestions split in two where asked.
+Anything else passes through as the same object, and the sequence type
+is kept."
+  (let ((expanded (seq-mapcat (lambda (action)
+                                (or (lsp-ltex-plus--split-suggestion action)
+                                    (list action)))
+                              (append actions nil))))
+    (if (vectorp actions) (vconcat expanded) expanded)))
+
 (provide 'lsp-ltex-plus-actions)
 ;;; lsp-ltex-plus-actions.el ends here
