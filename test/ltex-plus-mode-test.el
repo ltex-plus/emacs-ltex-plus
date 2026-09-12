@@ -19,6 +19,7 @@
 
 (require 'ltex-plus-test-helper)
 (require 'ltex-plus-fake-server)
+(require 'flyspell)
 
 (defvar ltex-plus-mode-test--looked-for-server nil
   "Set when the mode body got as far as looking for the binary.")
@@ -209,6 +210,45 @@ The server keeps running: another buffer may need it."
       (should-not (with-current-buffer buffer
                     (memq #'lsp-ltex-plus-flymake-backend flymake-diagnostic-functions)))
       (should (lsp-ltex-plus--live-connection)))))
+
+;;;; -- Flyspell ------------------------------------------------------------------
+
+(ert-deftest ltex-plus-mode-test-flyspell-is-left-alone-by-default ()
+  "With the option off, flyspell stays on beside LTeX+."
+  (ltex-plus-fake-with-connection
+    (ltex-plus-mode-test--with-file buffer "Text.\n"
+      (with-current-buffer buffer
+        (flyspell-mode 1)
+        (let ((lsp-ltex-plus-disable-flyspell nil))
+          (lsp-ltex-plus-mode 1))
+        (should flyspell-mode)
+        (lsp-ltex-plus-mode -1)
+        (should flyspell-mode)))))
+
+(ert-deftest ltex-plus-mode-test-flyspell-is-stopped-and-restored-when-asked ()
+  "With the option on, flyspell goes off with the mode and comes back with it."
+  (ltex-plus-fake-with-connection
+    (ltex-plus-mode-test--with-file buffer "Text.\n"
+      (with-current-buffer buffer
+        (flyspell-mode 1)
+        (let ((lsp-ltex-plus-disable-flyspell t))
+          (lsp-ltex-plus-mode 1)
+          (should-not flyspell-mode)
+          (should lsp-ltex-plus--stopped-flyspell)
+          (lsp-ltex-plus-mode -1))
+        (should flyspell-mode)
+        (should-not lsp-ltex-plus--stopped-flyspell)))))
+
+(ert-deftest ltex-plus-mode-test-flyspell-that-was-off-stays-off ()
+  "The option never turns flyspell on: a buffer without it is left without it."
+  (ltex-plus-fake-with-connection
+    (ltex-plus-mode-test--with-file buffer "Text.\n"
+      (with-current-buffer buffer
+        (should-not flyspell-mode)
+        (let ((lsp-ltex-plus-disable-flyspell t))
+          (lsp-ltex-plus-mode 1)
+          (lsp-ltex-plus-mode -1))
+        (should-not flyspell-mode)))))
 
 (ert-deftest ltex-plus-mode-test-shutting-the-server-down-switches-the-mode-off ()
   "`lsp-ltex-plus-shutdown-server' ends the server and the mode in its buffers."

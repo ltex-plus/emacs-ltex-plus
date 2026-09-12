@@ -149,6 +149,7 @@ silently do nothing would say it works."
             lsp-ltex-plus-check-programming-languages
             lsp-ltex-plus-check-fileless-buffers
             lsp-ltex-plus-check-comint-input
+            lsp-ltex-plus-disable-flyspell
             lsp-ltex-plus-additional-rules-enable-picky-rules
             lsp-ltex-plus-additional-rules-mother-tongue
             lsp-ltex-plus-additional-rules-language-model

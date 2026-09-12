@@ -499,6 +499,21 @@ works."
   :safe #'booleanp
   :group 'lsp-ltex-plus)
 
+(defcustom lsp-ltex-plus-disable-flyspell nil
+  "When non-nil, switch `flyspell-mode\\=' off in a buffer LTeX+ is checking.
+Flyspell checks spelling word by word against the system dictionary;
+in a document LTeX+ checks, it flags macro names, identifiers and every
+proper noun it does not know, and its dictionary is not the one you
+maintain through this package.  With this option on, turning
+`lsp-ltex-plus-mode\\=' on in a buffer where flyspell is active turns
+flyspell off, and turning the mode off brings flyspell back -- only
+where this package stopped it.  Off by default: a package should not
+switch another mode off unasked, and some people want flyspell for the
+code around the comments LTeX+ checks."
+  :type 'boolean
+  :safe #'booleanp
+  :group 'lsp-ltex-plus)
+
 (defcustom lsp-ltex-plus-check-comint-input t
   "When non-nil, grammar-check the active input region of comint buffers.
 In a `comint-mode' buffer (e.g. `agent-shell-mode', a shell, a REPL) only

@@ -207,6 +207,25 @@ force.  Set to nil to bind nothing and use the commands by name."
 ;; server serves every buffer, and a buffer is either open on it or not.
 
 (defvar lsp-ltex-plus-mode)  ; defined below; the helpers set it when they decline
+(defvar flyspell-mode)
+(declare-function flyspell-mode "flyspell")
+
+(defvar-local lsp-ltex-plus--stopped-flyspell nil
+  "Non-nil when this package switched `flyspell-mode\\=' off in this buffer.
+Only then does turning the mode off switch flyspell back on; a buffer
+where flyspell was already off is left as it was.")
+
+(defun lsp-ltex-plus--stop-flyspell ()
+  "Switch flyspell off in the current buffer if asked to, and remember it."
+  (when (and lsp-ltex-plus-disable-flyspell (bound-and-true-p flyspell-mode))
+    (flyspell-mode -1)
+    (setq lsp-ltex-plus--stopped-flyspell t)))
+
+(defun lsp-ltex-plus--restore-flyspell ()
+  "Switch flyspell back on in the current buffer if this package stopped it."
+  (when lsp-ltex-plus--stopped-flyspell
+    (setq lsp-ltex-plus--stopped-flyspell nil)
+    (flyspell-mode 1)))
 
 (defun lsp-ltex-plus--register-major-mode (interactive)
   "Add the current `major-mode' to `lsp-ltex-plus-major-modes' if it is absent.
@@ -270,10 +289,12 @@ major mode is known to the table."
           (when (lsp-ltex-plus--comint-buffer-p)
             (lsp-ltex-plus--comint-setup))
           (lsp-ltex-plus--flymake-attach)
-          (lsp-ltex-plus--open-document))
+          (lsp-ltex-plus--open-document)
+          (lsp-ltex-plus--stop-flyspell))
       (error
        (lsp-ltex-plus--flymake-detach)
        (lsp-ltex-plus--comint-teardown)
+       (lsp-ltex-plus--restore-flyspell)
        (setq lsp-ltex-plus-mode nil)
        (message "[lsp-ltex-plus] Could not start checking: %s"
                 (error-message-string err)))))))
@@ -286,7 +307,8 @@ should the mode come back; `lsp-ltex-plus-shutdown-server' stops it."
   (lsp-ltex-plus--log "Disabling LTeX+ in %s" (buffer-name))
   (lsp-ltex-plus--close-document)
   (lsp-ltex-plus--flymake-detach)
-  (lsp-ltex-plus--comint-teardown))
+  (lsp-ltex-plus--comint-teardown)
+  (lsp-ltex-plus--restore-flyspell))
 
 ;; A major-mode change discards the buffer's local variables, the flymake
 ;; backend and its report function among them; clearing the underlines
