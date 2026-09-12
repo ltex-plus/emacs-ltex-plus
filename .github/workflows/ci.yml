@@ -1,9 +1,12 @@
 # Byte-compilation, checkdoc and the offline ERT suite, on every push to
 # main and every pull request.
 #
-# The live tests are not run here: they need a real `ltex-ls-plus' and a
-# JVM, and they skip on their own when `LTEX_PLUS_LIVE' is unset.  Run
-# them locally with `make test-live' before tagging a release.
+# The live tests run in a job of their own, against the latest released
+# `ltex-ls-plus' (bundled JDK included).  The release tag is the cache
+# key, so the 300 MB tarball is downloaded once per new release and a
+# server that changes under the client shows up here rather than in a
+# user's report.  The job is a gate like the others: a red run after a
+# server release means the client has something to adapt to.
 #
 # The matrix is the declared floor (29.1), then the newest of each
 # series, then master.  The floor was tried lower once lsp-mode no longer
@@ -49,3 +52,58 @@ jobs:
         run: emacs --version | head -1
 
       - run: make check
+
+  live:
+    runs-on: ubuntu-latest
+    name: Live against the latest ltex-ls-plus
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: purcell/setup-emacs@master
+        with:
+          version: '29.1'
+
+      # The latest release's tag, which keys the cache below.  Resolved
+      # every run so a new release invalidates the cache on its own.
+      - name: Find the latest ltex-ls-plus release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(gh api repos/ltex-plus/ltex-ls-plus/releases/latest --jq .tag_name)
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "Latest ltex-ls-plus release: ${tag}"
+
+      - name: Restore the cached server
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ltex-ls-plus
+          key: ltex-ls-plus-${{ steps.release.outputs.tag }}-linux-x64
+
+      - name: Download the server
+        if: steps.cache.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "${{ steps.release.outputs.tag }}" \
+            --repo ltex-plus/ltex-ls-plus \
+            --pattern 'ltex-ls-plus-*-linux-x64.tar.gz' \
+            --output server.tar.gz
+          mkdir ltex-ls-plus
+          tar xzf server.tar.gz -C ltex-ls-plus --strip-components=1
+          rm server.tar.gz
+
+      # The launcher script picks its Java from JAVA_HOME; point it at the
+      # JDK the release bundles rather than whatever the runner ships.
+      - name: Put the server on PATH
+        run: |
+          echo "${PWD}/ltex-ls-plus/bin" >> "$GITHUB_PATH"
+          echo "JAVA_HOME=$(ls -d "${PWD}"/ltex-ls-plus/jdk-*)" >> "$GITHUB_ENV"
+
+      - name: Report versions
+        run: |
+          emacs --version | head -1
+          ltex-ls-plus --version
+
+      - run: make test-live
