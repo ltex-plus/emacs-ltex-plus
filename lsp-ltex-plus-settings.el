@@ -111,23 +111,13 @@ Nothing is refused when the version cannot be determined at all."
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-debug nil
-  "When non-nil, enable verbose logging and JSON-RPC tracing.
-Enabling this automatically sets `lsp-log-io' to t and creates
-detailed log files in the system temporary directory (see the
-variable `temporary-file-directory')."
+  "When non-nil, log what the client does and keep the whole wire.
+The client's own log goes to the `*lsp-ltex-plus::client*\\=' buffer.
+The exchange with the server is always recorded in the jsonrpc events
+buffer, `*ltex-ls-plus events*\\='; under this option that buffer is
+unbounded rather than capped, and the server is asked for its own
+message trace too (`lsp-ltex-plus-trace-server\\=')."
   :type 'boolean
-  :group 'lsp-ltex-plus)
-
-(defcustom lsp-ltex-plus-server-input-log
-  (expand-file-name "ltex-server-input.log" (temporary-file-directory))
-  "Log file for JSON-RPC input received by the server (from Emacs)."
-  :type 'file
-  :group 'lsp-ltex-plus)
-
-(defcustom lsp-ltex-plus-server-output-log
-  (expand-file-name "ltex-server-output.log" (temporary-file-directory))
-  "Log file for JSON-RPC output produced by the server (to Emacs)."
-  :type 'file
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-check-programming-languages nil
@@ -157,83 +147,6 @@ commented-out code.  Python comments are parsed as reStructuredText;
 all others are parsed as Markdown."
   :type 'boolean
   :safe #'booleanp
-  :group 'lsp-ltex-plus)
-
-(defcustom lsp-ltex-plus-show-progress t
-  "When non-nil (default), show ltex-ls-plus progress in the mode line.
-
-Progress updates from `ltex-ls-plus\\=' typically complete in ~100 ms,
-so the `⌛\\=' prefix (plus optional spinner animation) can flicker
-distractingly on every keystroke.  Users who find this bothersome
-should set this variable to nil; progress is then silenced for
-ltex-ls-plus only, while other LSP clients continue to render their
-progress normally.
-
-The default is t because the filtering mechanism is a narrow
-`advice-add\\=' around `lsp-on-progress-modeline\\=' — the default
-value of `lsp-progress-function\\=' in `lsp-mode\\='.  Advice on
-third-party internals is fragile, so we ship in the pass-through
-state by default and leave the opt-in to users who actually mind the
-flicker.  Users who have replaced `lsp-progress-function\\=' with a
-custom handler are not affected by the advice and should filter on
-`lsp--workspace-server-id\\=' themselves."
-  :type 'boolean
-  :group 'lsp-ltex-plus)
-
-(defcustom lsp-ltex-plus-show-latency nil
-  "When non-nil, echo the server round-trip time after every check.
-
-Two distinct events are measured and reported with different wording
-so the two regimes can be distinguished at a glance:
-
-- `textDocument/didOpen\\='   → \"Completed initial spell check in N ms.\"
-- `textDocument/didChange\\=' → \"Completed spell check in N ms.\"
-
-The didOpen figure reflects a cold start: the server loads the
-document for the first time and runs LanguageTool against the full
-text.  The didChange figure reflects the warm path: incremental
-re-checks triggered by edits, served from the sentence cache where
-possible.  Reporting both makes it easy to quote numbers of the form
-\"first open: X ms, incremental edit: Y ms\".
-
-In both cases the timer runs from the moment the notification is
-dispatched to ltex-ls-plus until the matching
-`textDocument/publishDiagnostics\\=' arrives.
-
-This reports server-side latency only.  It does *not* include the
-subsequent `lsp-mode' / flycheck / flymake rendering step that draws
-the squiggles on screen, which typically adds several hundred
-milliseconds on top and dominates perceived responsiveness in Emacs.
-
-Off by default: with a short debounce interval the didChange message
-fires on essentially every keystroke and the constant echo-area
-updates are distracting during normal editing.  Enable it when
-investigating latency (e.g. comparing local vs. remote LanguageTool
-backends) and disable it again afterwards."
-  :type 'boolean
-  :group 'lsp-ltex-plus)
-
-(defcustom lsp-ltex-plus-multi-root t
-  "When non-nil, register the ltex-ls-plus client as multi-root.
-
-This is the default and recommended setting.  With multi-root enabled,
-a single `ltex-ls-plus\\=' JVM process handles all folders in the Emacs
-session, avoiding the memory cost of one process per project root.
-
-The feature works on any `ltex-ls-plus\\=' binary: multi-root is a
-client-side decision about workspace reuse, and a `ltex-ls-plus\\='
-server does not need to know about project roots to check documents
-correctly.  When the server advertises `workspaceFolders\\=' support in
-its `initialize\\=' response, the `workspaceFolders\\=' init param and
-the `workspace/didChangeWorkspaceFolders\\=' notification are a proper
-part of the handshake; when it does not, those messages are still sent
-and silently ignored per the LSP spec (which `lsp4j'-based servers
-honour).  Either way, a single JVM handles every folder.
-
-Set this variable to nil only if you want to disable client-side
-workspace reuse — for example, because you want per-project isolation
-once the server gains per-project settings."
-  :type 'boolean
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-language "en-US"
@@ -573,9 +486,9 @@ quicker feedback, raise it on a slow machine or for very large files."
 (defcustom lsp-ltex-plus-check-fileless-buffers t
   "When non-nil, grammar-check buffers that have no backing file.
 File-less buffers (e.g. *scratch*, capture buffers) in a recognized major
-mode are given a synthetic file:// URI under the variable
-`temporary-file-directory' and share a single workspace, so one server
-process serves them all.
+mode are opened on the server under an identity the client invents;
+nothing is written to disk, and the one server of the session checks
+them like any file.
 
 This is orthogonal to `lsp-ltex-plus-check-programming-languages': a
 file-less buffer in a programming mode (such as *scratch*, which uses
@@ -593,35 +506,12 @@ the editable input the user is currently typing — the region from the
 process mark to the end of the buffer — is sent to LTEX+.  Previously
 submitted input and all process/agent output are never checked.
 
-This relies on the same file-less identity machinery as
-`lsp-ltex-plus-check-fileless-buffers' (comint buffers have no backing
-file), but additionally restricts the checked document to the input
-region via `lsp-mode''s virtual-buffer support.  See
-`lsp-ltex-plus--setup-comint-buffer'."
+A comint buffer visits no file, so it is opened under an invented
+identity like any file-less buffer; what is sent as the document is the
+input region alone, and while the program is producing output nothing
+is sent at all.  See `lsp-ltex-plus-comint.el'."
   :type 'boolean
   :safe #'booleanp
-  :group 'lsp-ltex-plus)
-
-(defcustom lsp-ltex-plus-apply-kind-first-patch nil
-  "Whether to apply protocol patches to `lsp-mode' (Kind-First and related).
-When non-nil, several surgical fixes are applied to `lsp-mode' to
-improve protocol robustness:
-
-1. Kind-First routing: prioritizes the \\='method\\=' field in
-   `lsp--parser-on-message', preventing deadlocks when
-   server-initiated requests (like `workspace/configuration')
-   collide with client response IDs.
-
-2. Resilient message dispatch: ensures that when the server sends
-   multiple updates bundled together, an interruption in one
-   (like typing during completion) doesn't cause the rest of the
-   bundle to be discarded.
-
-3. Stale callback protection: prevents synchronous requests from
-   throwing after they have already timed out or been cancelled.
-
-Note: These are global surgical patches affecting all LSP servers."
-  :type 'boolean
   :group 'lsp-ltex-plus)
 
 (defvar lsp-ltex-plus-trace-server "off"
@@ -629,6 +519,48 @@ Note: These are global surgical patches affecting all LSP servers."
 - \"off\": Don't log any communication.
 - \"messages\": Log the type of requests and responses.
 - \"verbose\": Log the type and contents of requests and responses.")
+
+;;;; -- Retired settings -------------------------------------------------------
+
+;; Six settings meant something only while the client ran on lsp-mode:
+;; two named the tee log files that duplicated what the jsonrpc events
+;; buffer now records, one silenced lsp-mode's progress spinner, one
+;; measured latency through advice on lsp-mode internals, one asked
+;; lsp-mode to reuse a workspace across roots -- which is simply how the
+;; one connection per session works now -- and one applied protocol
+;; patches to lsp-mode's message router, whose bug jsonrpc does not have.
+;; They stay defined so that a configuration setting them keeps loading,
+;; and are marked obsolete so that Customize and the byte-compiler say so.
+
+(defvar lsp-ltex-plus-server-input-log nil
+  "Obsolete; the jsonrpc events buffer records the exchange.")
+(make-obsolete-variable 'lsp-ltex-plus-server-input-log
+                        "the `*ltex-ls-plus events*' buffer records the exchange." "1.0.0")
+
+(defvar lsp-ltex-plus-server-output-log nil
+  "Obsolete; the jsonrpc events buffer records the exchange.")
+(make-obsolete-variable 'lsp-ltex-plus-server-output-log
+                        "the `*ltex-ls-plus events*' buffer records the exchange." "1.0.0")
+
+(defvar lsp-ltex-plus-show-progress t
+  "Obsolete; there is no progress spinner to silence.")
+(make-obsolete-variable 'lsp-ltex-plus-show-progress
+                        "the client shows no progress indicator." "1.0.0")
+
+(defvar lsp-ltex-plus-show-latency nil
+  "Obsolete; the latency benchmark went with lsp-mode.")
+(make-obsolete-variable 'lsp-ltex-plus-show-latency
+                        "the jsonrpc events buffer carries timestamps." "1.0.0")
+
+(defvar lsp-ltex-plus-multi-root t
+  "Obsolete; one server serves every buffer of the session.")
+(make-obsolete-variable 'lsp-ltex-plus-multi-root
+                        "one server always serves every buffer of the session." "1.0.0")
+
+(defvar lsp-ltex-plus-apply-kind-first-patch nil
+  "Obsolete; the client no longer runs on lsp-mode.")
+(make-obsolete-variable 'lsp-ltex-plus-apply-kind-first-patch
+                        "the client runs on jsonrpc, which routes messages correctly." "1.0.0")
 
 ;;;; -- Internal State & Logging -----------------------------------------------
 
