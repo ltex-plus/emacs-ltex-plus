@@ -78,6 +78,13 @@ working directory and from any clone.")
            file ltex-plus-test-repo-root))
   (load file nil t t))
 
+;; No offline test may start a real server.  On a machine that has
+;; ltex-ls-plus on PATH, a test that reaches for a connection without the
+;; fake in place would otherwise start a JVM, and every later test would
+;; reuse it in place of the fake and time out for no visible reason.  The
+;; live helper sets the executable back for the tests that mean it.
+(setq lsp-ltex-plus-ls-plus-executable "ltex-ls-plus-is-not-installed-in-offline-tests")
+
 ;;;; -- Demoted errors under ERT -----------------------------------------------
 
 (defmacro ltex-plus-test-without-debugger (&rest body)

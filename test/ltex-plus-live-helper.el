@@ -35,6 +35,12 @@
 
 (require 'ltex-plus-test-helper)
 
+;; The shared helper points the executable setting at a name that does not
+;; exist, so that no offline test can start a real server by accident.
+;; This file is the one place that means to.
+(setq lsp-ltex-plus-ls-plus-executable
+      (eval (car (get 'lsp-ltex-plus-ls-plus-executable 'standard-value))))
+
 (defconst ltex-plus-live-timeout 60
   "Seconds to wait for the server.  Generous: it starts a JVM.")
 
