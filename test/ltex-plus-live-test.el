@@ -114,6 +114,97 @@ what answering per document depends on."
                                uri))))))
       (advice-remove 'lsp-ltex-plus--handle-request 'ltex-plus-live-watch))))
 
+;;;; -- Per-document settings ---------------------------------------------------
+
+(ltex-plus-live-deftest ltex-plus-live-test-each-project-is-checked-in-its-language
+    "Two projects open at once are each checked in their own language.
+The reason the configuration pulls are answered per `scopeUri' rather
+than from whichever buffer is current.  \"Widerspiegelung\" is a German
+word and an English misspelling, so the same text gives opposite answers
+in the two projects -- which it cannot do if one project's
+`.dir-locals.el' is answering for the other's documents."
+  (ltex-plus-live-test--setup)
+  (let* ((german (file-name-as-directory
+                  (expand-file-name "german" (ltex-plus-live-root))))
+         (english (file-name-as-directory
+                   (expand-file-name "english" (ltex-plus-live-root))))
+         (text "Die Widerspiegelung ist hier.\n"))
+    (ltex-plus-live-write ".dir-locals.el"
+                          "((nil . ((lsp-ltex-plus-language . \"de-DE\"))))"
+                          german)
+    (let ((in-german (ltex-plus-live-open
+                      (ltex-plus-live-write "doc.md" text german)))
+          (in-english (ltex-plus-live-open
+                       (ltex-plus-live-write "doc.md" text english))))
+      (should (equal (buffer-local-value 'lsp-ltex-plus-language in-german)
+                     "de-DE"))
+      (should-not (ltex-plus-live-flagged-p "Widerspiegelung" in-german))
+      (should (ltex-plus-live-flagged-p "Widerspiegelung" in-english)))))
+
+(ltex-plus-live-deftest ltex-plus-live-test-a-project-dictionary-is-honoured
+    "A project's own word list is accepted in that project and nowhere else.
+Read through `ltex/workspaceSpecificConfiguration', which the server
+prefers over the standard reply for exactly these four settings -- so
+this is the only path that proves the custom handler is the one being
+listened to."
+  (ltex-plus-live-test--setup)
+  (let* ((word "Grumbleweed")
+         (inside (file-name-as-directory
+                  (expand-file-name "with-dictionary" (ltex-plus-live-root))))
+         (outside (file-name-as-directory
+                   (expand-file-name "without" (ltex-plus-live-root))))
+         (text (format "The %s grows here.\n" word)))
+    (ltex-plus-live-write
+     ".dir-locals.el"
+     "((nil . ((lsp-ltex-plus-project-dictionary-file . \".ltex/words.eld\"))))"
+     inside)
+    (ltex-plus-live-write ".ltex/words.eld" (format "(:en-US [\"%s\"])" word) inside)
+    (let ((in-project (ltex-plus-live-open
+                       (ltex-plus-live-write "doc.md" text inside)))
+          (elsewhere (ltex-plus-live-open
+                      (ltex-plus-live-write "doc.md" text outside))))
+      (should-not (ltex-plus-live-flagged-p word in-project))
+      (should (ltex-plus-live-flagged-p word elsewhere)))))
+
+(ltex-plus-live-deftest ltex-plus-live-test-a-global-word-is-still-accepted-in-a-project
+    "The global list extends a project's list; the project never shadows it.
+A word in the global dictionary stays accepted inside a project that
+keeps a dictionary of its own, since the two are merged."
+  (ltex-plus-live-test--setup)
+  (let* ((word "Snorfblatt")
+         (inside (file-name-as-directory
+                  (expand-file-name "merged" (ltex-plus-live-root))))
+         (text (format "The %s is global.\n" word)))
+    (lsp-ltex-plus--save-plist (list :en-US (vector word)) lsp-ltex-plus-dictionary-file)
+    (lsp-ltex-plus--load-external-settings)
+    (ltex-plus-live-write
+     ".dir-locals.el"
+     "((nil . ((lsp-ltex-plus-project-dictionary-file . \".ltex/words.eld\"))))"
+     inside)
+    (ltex-plus-live-write ".ltex/words.eld" "(:en-US [\"Unrelated\"])" inside)
+    (let ((buffer (ltex-plus-live-open (ltex-plus-live-write "doc.md" text inside))))
+      (should-not (ltex-plus-live-flagged-p word buffer)))))
+
+;;;; -- The reload command ------------------------------------------------------
+
+(ltex-plus-live-deftest ltex-plus-live-test-reload-reaches-the-server
+    "`lsp-ltex-plus-reload-settings' makes a hand-edited file take effect.
+The scenario is the documented one: edit the global file by hand, run
+the command, expect the word to stop being flagged on the next check."
+  (ltex-plus-live-test--setup)
+  (let* ((word "Flimberry")
+         (buffer (ltex-plus-live-open
+                  (ltex-plus-live-write
+                   "reload.md" (format "A %s appeared.\n" word)))))
+    (with-current-buffer buffer
+      (should (ltex-plus-live-flagged-p word))
+      (lsp-ltex-plus--save-plist (list :en-US (vector word))
+                                 lsp-ltex-plus-dictionary-file)
+      (ltex-plus-live-after-publish
+       (lambda () (let ((inhibit-message t)) (lsp-ltex-plus-reload-settings)))
+       "the re-check after reloading settings")
+      (should-not (ltex-plus-live-flagged-p word)))))
+
 ;;;; -- One server for the session ----------------------------------------------
 
 (defun ltex-plus-live-test--server-processes ()
