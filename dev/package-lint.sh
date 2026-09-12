@@ -50,4 +50,4 @@ exec emacs --batch -Q \
   --eval "(require 'package-lint)" \
   -f package-lint-batch-and-exit \
   lsp-ltex-plus-bootstrap.el lsp-ltex-plus-settings.el lsp-ltex-plus-conn.el \
-  lsp-ltex-plus.el
+  lsp-ltex-plus-diag.el lsp-ltex-plus.el

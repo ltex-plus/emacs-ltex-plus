@@ -76,6 +76,7 @@
 (require 'lsp-ltex-plus-bootstrap)
 (require 'lsp-ltex-plus-settings)
 (require 'lsp-ltex-plus-conn)
+(require 'lsp-ltex-plus-diag)
 
 ;; The client layer -- connection, document sync, diagnostics, code actions
 ;; and the minor mode -- is being rebuilt on `jsonrpc'.  Until it lands this

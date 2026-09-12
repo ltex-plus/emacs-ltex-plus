@@ -18,7 +18,7 @@
 
 EMACS ?= emacs
 PACKAGE_FILES := lsp-ltex-plus-bootstrap.el lsp-ltex-plus-settings.el \
-  lsp-ltex-plus-conn.el lsp-ltex-plus.el
+  lsp-ltex-plus-conn.el lsp-ltex-plus-diag.el lsp-ltex-plus.el
 
 # Every multi-line `--eval' below is built as a variable, never written
 # inline in a recipe.  Make collapses a backslash-newline in a variable
