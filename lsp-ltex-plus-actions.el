@@ -69,5 +69,93 @@ on a running server."
              :timeout 10)
             nil)))
 
+;;;; -- Applying an edit ---------------------------------------------------------
+
+;; A replacement suggestion is a `WorkspaceEdit'.  The positions in it are
+;; relative to the text the server checked, so every edit is resolved to
+;; points before any is applied, and they are applied from the end of the
+;; buffer backwards so that no edit moves the text of one still to come.
+;; The version the server names must be the version the buffer is at,
+;; and nothing may be waiting to be sent: either would mean the positions
+;; describe a text the buffer no longer holds.
+
+(defun lsp-ltex-plus--edit-buffer (uri)
+  "Return the buffer an edit for URI applies to.
+The buffer open under URI, or failing that one visiting the file it
+names; signals a `user-error' when there is neither."
+  (or (lsp-ltex-plus--buffer-for-uri uri)
+      (get-file-buffer (lsp-ltex-plus--uri-to-path uri))
+      (user-error "[lsp-ltex-plus] The edit is for %s, which no buffer holds" uri)))
+
+(defun lsp-ltex-plus--text-edits-by-document (edit)
+  "Return the text edits in the `WorkspaceEdit' EDIT, grouped by document.
+A list of (URI VERSION . EDITS), one per document, in the order given.
+VERSION is the document version the server based the edits on, or nil
+where it named none.  Only text edits are accepted: an operation on a
+file itself -- create, rename, delete -- is refused with a `user-error',
+since a grammar checker has no business sending one."
+  (let ((result nil))
+    (seq-doseq (change (plist-get edit :documentChanges))
+      (if-let* ((document (plist-get change :textDocument)))
+          (push (cons (plist-get document :uri)
+                      (cons (plist-get document :version)
+                            (append (plist-get change :edits) nil)))
+                result)
+        (user-error "[lsp-ltex-plus] The edit wants to %s a file, which this client does not do"
+                    (plist-get change :kind))))
+    ;; `changes' is an object keyed by URI, which jsonrpc hands over as a
+    ;; plist whose keys are the URIs read as keywords.
+    (let ((changes (plist-get edit :changes)))
+      (while (and (consp changes) (keywordp (car changes)))
+        (push (cons (substring (symbol-name (pop changes)) 1)
+                    (cons nil (append (pop changes) nil)))
+              result)))
+    (nreverse result)))
+
+(defun lsp-ltex-plus--apply-text-edits (buffer edits)
+  "Apply the protocol text EDITS to BUFFER as one change.
+All positions are resolved first, against the text as it is; the edits
+are then applied from the end backwards, and two edits at the same
+position keep the order the server gave them, as the protocol requires."
+  (with-current-buffer buffer
+    (let* ((index -1)
+           (resolved
+            (mapcar (lambda (edit)
+                      (let ((range (plist-get edit :range)))
+                        (list (lsp-ltex-plus--position-to-point (plist-get range :start))
+                              (lsp-ltex-plus--position-to-point (plist-get range :end))
+                              (plist-get edit :newText)
+                              (cl-incf index))))
+                    edits))
+           (ordered (sort resolved
+                          (lambda (a b)
+                            (or (> (car a) (car b))
+                                (and (= (car a) (car b))
+                                     (> (nth 3 a) (nth 3 b))))))))
+      (atomic-change-group
+        (save-excursion
+          (pcase-dolist (`(,beg ,end ,text ,_) ordered)
+            (goto-char beg)
+            (delete-region beg end)
+            (insert text)))))))
+
+(defun lsp-ltex-plus--apply-workspace-edit (edit)
+  "Apply the `WorkspaceEdit' EDIT to the buffers it names.
+Every document is checked before any is touched: each must have a
+buffer, be at the version the server named, and have no edit waiting to
+be sent.  Returns the number of documents edited."
+  (let ((documents (lsp-ltex-plus--text-edits-by-document edit)))
+    (pcase-dolist (`(,uri ,version . ,_) documents)
+      (let ((buffer (lsp-ltex-plus--edit-buffer uri)))
+        (when (or (buffer-local-value 'lsp-ltex-plus--change-timer buffer)
+                  (and version
+                       (/= version (buffer-local-value 'lsp-ltex-plus--document-version
+                                                       buffer))))
+          (user-error "[lsp-ltex-plus] %s has changed since the server looked at it; wait for the next check"
+                      (buffer-name buffer)))))
+    (pcase-dolist (`(,uri ,_ . ,edits) documents)
+      (lsp-ltex-plus--apply-text-edits (lsp-ltex-plus--edit-buffer uri) edits))
+    (length documents)))
+
 (provide 'lsp-ltex-plus-actions)
 ;;; lsp-ltex-plus-actions.el ends here
