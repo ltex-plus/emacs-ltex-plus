@@ -383,7 +383,7 @@ may need to be enabled in order to see an effect.  nil means unset."
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-additional-rules-language-model nil
-  "Optional path to a directory with rules of a language model with n-gram counts.
+  "Optional path to a directory of n-gram language model rules.
 Set this to the parent directory that contains subdirectories for
 languages.  nil means unset."
   :type '(choice (const :tag "Unset" nil) (directory :tag "Directory"))
@@ -718,7 +718,7 @@ consulted by `lsp-ltex-plus--load-project-plist'; see the
 `lsp-ltex-plus-project-*-file' settings.")
 
 (defvar lsp-ltex-plus--server-name nil
-  "Name the connected ltex-ls-plus gave in the `serverInfo\\=' of its reply, or nil.
+  "Name the connected ltex-ls-plus gave in its `serverInfo\\=', or nil.
 Set by `lsp-ltex-plus--enforce-server-version\\=' once the handshake has
 completed; nil against a server that omits `serverInfo\\='.")
 
