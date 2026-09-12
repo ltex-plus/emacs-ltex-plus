@@ -64,6 +64,12 @@ the client refused the request.")
 (defvar ltex-plus-fake-pull-configuration t
   "Whether to pull configuration before publishing, as the real server does.")
 
+(defvar ltex-plus-fake-strict-pulls '(workspace/configuration)
+  "Pulls whose refusal aborts the check, as it does on the real server.
+ltex-ls-plus waits on the reply and gives up the check with a logged
+exception when it is an error; a fake that published anyway would let
+a client that refuses the pull pass every test.")
+
 (defvar ltex-plus-fake-server-version "18.7.1"
   "The version the fake reports in `serverInfo'.")
 
@@ -163,9 +169,10 @@ the protocol default the client declared."
 
 (defun ltex-plus-fake--pull (uri method then)
   "Ask the client for configuration of URI with METHOD, then call THEN.
-The reply, or the refusal, is recorded in `ltex-plus-fake-config-replies'
-either way, and THEN runs either way: the real server publishes on what
-it has."
+The reply, or the refusal, is recorded in `ltex-plus-fake-config-replies'.
+A refusal of a pull in `ltex-plus-fake-strict-pulls' ends the check
+there, as on the real server; any other refusal is tolerated and THEN
+runs regardless."
   (jsonrpc-async-request
    ltex-plus-fake-peer method
    (list :items (vector (list :scopeUri uri :section "ltex")))
@@ -174,7 +181,8 @@ it has."
                  (funcall then))
    :error-fn (lambda (err)
                (push (list uri method :error err) ltex-plus-fake-config-replies)
-               (funcall then))
+               (unless (memq method ltex-plus-fake-strict-pulls)
+                 (funcall then)))
    :timeout 5))
 
 (defun ltex-plus-fake--check (uri)

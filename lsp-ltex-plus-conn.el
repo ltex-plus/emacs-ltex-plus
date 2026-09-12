@@ -636,6 +636,58 @@ version is always taken."
             (run-hook-with-args 'lsp-ltex-plus--diagnostics-functions buffer)))
       (lsp-ltex-plus--log "Dropping diagnostics for %s, which no buffer holds" uri))))
 
+;;;; -- Configuration -----------------------------------------------------------
+
+;; The server pulls settings before every check, and tags each requested
+;; item with the URI of the document it is about to check.  Each item is
+;; answered from that document's buffer, which is what gives a project's
+;; `.dir-locals.el' its meaning for this client: two projects open at
+;; once are checked in their own languages, against their own lists.
+
+(defun lsp-ltex-plus--call-in-document-context (uri fn)
+  "Call FN with no arguments, with the buffer open under URI current.
+URI resolves to no buffer only when that buffer was killed between the
+check starting and the pull arriving.  The server will finish that
+check and publish for a document nothing displays, so the answer cannot
+be observed; the reply merely has to carry one entry per item.  FN then
+runs in a buffer with no file name, which is the plain global
+configuration -- never the settings of whichever buffer happens to be
+current, and never those of a project root."
+  (if-let* ((buffer (lsp-ltex-plus--buffer-for-uri uri)))
+      (with-current-buffer buffer (funcall fn))
+    (with-temp-buffer (funcall fn))))
+
+(defun lsp-ltex-plus--configuration-section (section)
+  "Return the settings for SECTION, read in the current buffer.
+SECTION is what the server asked for: nil for everything, which is the
+`ltex' object under its key; \"ltex\" for that object itself; a dotted
+name such as \"ltex.latex.commands\" for one value inside it.  A section
+this client knows nothing about is answered with nil, the protocol's
+null."
+  (let ((object (lsp-ltex-plus--settings-object)))
+    (cond
+     ((null section) (list :ltex object))
+     ((equal section "ltex") object)
+     ((string-prefix-p "ltex." section)
+      (let ((value object))
+        (dolist (step (cdr (split-string section "\\.")) value)
+          (setq value (and (listp value)
+                           (plist-get value (intern (concat ":" step))))))))
+     (t nil))))
+
+(defun lsp-ltex-plus--answer-configuration (params)
+  "Answer the server's `workspace/configuration' request PARAMS.
+PARAMS carries `items', a vector of (scopeUri URI, section SECTION).
+The reply is a vector with one entry per item, in order: the server
+matches answers to items by position."
+  (lsp-ltex-plus--log "workspace/configuration: %S" params)
+  (vconcat
+   (mapcar (lambda (item)
+             (lsp-ltex-plus--call-in-document-context
+              (plist-get item :scopeUri)
+              (lambda () (lsp-ltex-plus--configuration-section (plist-get item :section)))))
+           (plist-get params :items))))
+
 ;;;; -- What the server sends --------------------------------------------------
 
 ;; Both dispatchers receive the method as an interned symbol.  Requests the
@@ -650,6 +702,8 @@ The value returned is the request's result.  An unknown method is
 refused with the protocol's own code for that, so the server learns it
 asked for something this client does not do."
   (pcase method
+    ('workspace/configuration
+     (lsp-ltex-plus--answer-configuration params))
     ((or 'client/registerCapability 'client/unregisterCapability
          'window/workDoneProgress/create)
      nil)
