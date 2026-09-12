@@ -296,6 +296,112 @@ the command, expect the word to stop being flagged on the next check."
        "the re-check after reloading settings")
       (should-not (ltex-plus-live-flagged-p word)))))
 
+;;;; -- Buffers with no file ----------------------------------------------------
+
+(ltex-plus-live-deftest ltex-plus-live-test-a-fileless-buffer-is-checked
+    "A buffer visiting no file is checked under its invented URI.
+The real server treats the URI as an opaque name; this is where that
+assumption is tested against the server rather than the fake."
+  (ltex-plus-live-test--setup)
+  (let ((buffer (generate-new-buffer "*ltex-plus-live-scratch*")))
+    (push buffer ltex-plus-live--buffers)
+    (with-current-buffer buffer
+      (text-mode)
+      (insert "He go to school.\n")
+      (ltex-plus-live-after-publish
+       (lambda () (let ((inhibit-message t)) (lsp-ltex-plus-mode 1)))
+       "the check of a file-less buffer")
+      (should (string-prefix-p "ltex-plus://buffer/" lsp-ltex-plus--document-uri))
+      (should (ltex-plus-live-diagnostics))
+      ;; And a suggestion addressed to that URI lands here.
+      (let* ((actions (ltex-plus-live-test--actions-at buffer 5))
+             (fix (seq-find (lambda (action) (equal (plist-get action :title) "Use 'goes'"))
+                            actions)))
+        (should fix)
+        (ltex-plus-live-after-publish
+         (lambda () (lsp-ltex-plus--run-action fix))
+         "the re-check after accepting in a file-less buffer")
+        (should (equal (buffer-string) "He goes to school.\n"))
+        (should-not (ltex-plus-live-diagnostics))))))
+
+(ltex-plus-live-deftest ltex-plus-live-test-saving-a-scratch-buffer-hands-over
+    "A file-less buffer saved to disk is closed and re-checked under its real name.
+The server is told to close the invented document and open the file;
+a leaked document would sit open under a URI nothing would ever
+update.  The dispatcher is installed, as in every real session, since
+saving under a name that changes the major mode discards the buffer's
+local variables and it is the dispatcher that turns the mode back on."
+  (ltex-plus-live-test--setup)
+  (let ((after-change-major-mode-hook after-change-major-mode-hook)
+        (lsp-ltex-plus--enabled-modes lsp-ltex-plus--enabled-modes)
+        (buffer (generate-new-buffer "*ltex-plus-live-draft*"))
+        (path (expand-file-name "saved-draft.md" (ltex-plus-live-root)))
+        (closed nil))
+    (lsp-ltex-plus-enable-for-modes)
+    (push buffer ltex-plus-live--buffers)
+    (advice-add 'lsp-ltex-plus--close-document :before
+                (lambda (&rest _)
+                  (push (buffer-local-value 'lsp-ltex-plus--document-uri (current-buffer))
+                        closed))
+                '((name . ltex-plus-live-watch)))
+    (unwind-protect
+        (with-current-buffer buffer
+          (text-mode)
+          (insert "He go to school.\n")
+          (ltex-plus-live-after-publish
+           (lambda () (let ((inhibit-message t)) (lsp-ltex-plus-mode 1)))
+           "the check of the file-less buffer")
+          (let ((synthetic lsp-ltex-plus--document-uri))
+            (should (string-prefix-p "ltex-plus://buffer/" synthetic))
+            (ltex-plus-live-after-publish
+             (lambda () (let ((inhibit-message t)) (write-file path)))
+             "the re-check under the real file name")
+            (should (equal buffer-file-name path))
+            (should lsp-ltex-plus-mode)
+            (should (equal lsp-ltex-plus--document-uri (lsp-ltex-plus--path-to-uri path)))
+            (should (member synthetic closed))
+            (should-not (lsp-ltex-plus--buffer-for-uri synthetic))
+            (should (ltex-plus-live-diagnostics))))
+      (advice-remove 'lsp-ltex-plus--close-document 'ltex-plus-live-watch))))
+
+;;;; -- The comint input region -------------------------------------------------
+
+(ltex-plus-live-deftest ltex-plus-live-test-comint-input-is-checked-and-cleared
+    "The input a user is typing is checked, and clears when submitted.
+Only a running server shows that the region really is presented as a
+document it will check, and that the re-sync after submitting makes it
+publish the empty document; the offline tests show what is sent, not
+what the server does with it."
+  (ltex-plus-live-test--setup)
+  (let* ((buffer (generate-new-buffer "*ltex-plus-live-shell*"))
+         (process (make-pipe-process :name "ltex-plus-live-shell" :buffer buffer
+                                     :noquery t)))
+    (push buffer ltex-plus-live--buffers)
+    (unwind-protect
+        (with-current-buffer buffer
+          (comint-mode)
+          (setq-local comint-input-sender #'ignore)
+          (insert "previous output\n" "shell> ")
+          (set-marker (process-mark process) (point))
+          (insert "He go to school.")
+          (ltex-plus-live-after-publish
+           (lambda () (let ((inhibit-message t)) (lsp-ltex-plus-mode 1)))
+           "the first check of the input")
+          (should lsp-ltex-plus--comint-active)
+          (should (ltex-plus-live-diagnostics))
+          ;; The underline is on the input, past the prompt, not on the
+          ;; output: the server flags the verb, and that is where it lands.
+          (let ((region (lsp-ltex-plus--diagnostic-region (car (ltex-plus-live-diagnostics)))))
+            (should (>= (car region) (lsp-ltex-plus--comint-input-start)))
+            (should (equal (buffer-substring (car region) (cdr region)) "go")))
+          (should-not (seq-some (lambda (m) (string-match-p "output" m))
+                                (ltex-plus-live-messages)))
+          (ltex-plus-live-after-publish
+           (lambda () (comint-send-input))
+           "the re-sync after submitting")
+          (should-not (ltex-plus-live-diagnostics)))
+      (delete-process process))))
+
 ;;;; -- One server for the session ----------------------------------------------
 
 (defun ltex-plus-live-test--server-processes ()
