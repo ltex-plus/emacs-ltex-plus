@@ -441,11 +441,14 @@ again."
       (should-not lsp-ltex-plus-mode)
       (should-not (ltex-plus-live-diagnostics)))
     (should (lsp-ltex-plus--live-connection))
+    ;; Waiting for diagnostics rather than for a publish: closing makes
+    ;; the server publish an empty list to clear the document, and when
+    ;; the buffer reopens under the same URI that clear can arrive after
+    ;; the reopen and be the first publish seen.  The real check follows.
     (with-current-buffer buffer
-      (ltex-plus-live-after-publish
-       (lambda () (lsp-ltex-plus-mode 1))
-       "the check after re-enabling the mode")
-      (should (ltex-plus-live-diagnostics)))))
+      (lsp-ltex-plus-mode 1)
+      (ltex-plus-live-until (lambda () (ltex-plus-live-diagnostics))
+                            "the check after re-enabling the mode"))))
 
 (ltex-plus-live-deftest ltex-plus-live-test-the-shutdown-command-stops-the-server
     "`lsp-ltex-plus-shutdown-server' ends the process and the mode with it.
