@@ -66,25 +66,40 @@ diagnostics it applies to."
                                (lsp-ltex-plus--flymake-text diagnostic)
                                diagnostic))))
 
+(defun lsp-ltex-plus--whole-buffer ()
+  "Return (BEG . END) spanning the whole of the current buffer, widened."
+  (save-restriction
+    (widen)
+    (cons (point-min) (point-max))))
+
+(defun lsp-ltex-plus--flymake-send (report-fn diagnostics)
+  "Hand DIAGNOSTICS to flymake through REPORT-FN, replacing the last report.
+Flymake treats a backend's second and later reports as additions unless
+they name a region, so every report here names the whole buffer: what
+the server last published is the whole truth about the buffer, and an
+empty list means there is nothing left to show.  A report flymake no
+longer expects -- it asked the backend again in the meantime, or was
+switched off between the check and the publish -- is logged and let
+go; the next report through the newer function will carry the same
+diagnostics."
+  (condition-case err
+      (funcall report-fn diagnostics :region (lsp-ltex-plus--whole-buffer))
+    (error
+     (lsp-ltex-plus--log "flymake declined a report for %s: %s"
+                         (buffer-name) (error-message-string err)))))
+
 (defun lsp-ltex-plus--flymake-report (buffer)
   "Report BUFFER's stored diagnostics to flymake, if it is listening.
 On `lsp-ltex-plus--diagnostics-functions'.  Nothing happens for a buffer
-whose backend flymake has not called yet, or where flymake is off.  A
-report flymake no longer expects -- it asked the backend again in the
-meantime, or was switched off between the check and the publish -- is
-logged and let go; the next report through the newer function will
-carry the same diagnostics."
+whose backend flymake has not called yet, or where flymake is off."
   (when (buffer-live-p buffer)
     (with-current-buffer buffer
       (when (and lsp-ltex-plus--flymake-report-fn flymake-mode)
-        (condition-case err
-            (funcall lsp-ltex-plus--flymake-report-fn
-                     (mapcar (lambda (diagnostic)
-                               (lsp-ltex-plus--flymake-diagnostic diagnostic buffer))
-                             lsp-ltex-plus--diagnostics))
-          (error
-           (lsp-ltex-plus--log "flymake declined a report for %s: %s"
-                               (buffer-name) (error-message-string err))))))))
+        (lsp-ltex-plus--flymake-send
+         lsp-ltex-plus--flymake-report-fn
+         (mapcar (lambda (diagnostic)
+                   (lsp-ltex-plus--flymake-diagnostic diagnostic buffer))
+                 lsp-ltex-plus--diagnostics))))))
 
 (defun lsp-ltex-plus-flymake-backend (report-fn &rest _)
   "Report the server's diagnostics for the current buffer to flymake.
@@ -107,9 +122,7 @@ Clears what the backend reported, then removes it.  `flymake-mode' is
 left as it is: another backend may be using it, and switching it off
 behind the user's back would be a surprise either way."
   (when (and lsp-ltex-plus--flymake-report-fn flymake-mode)
-    (condition-case nil
-        (funcall lsp-ltex-plus--flymake-report-fn nil)
-      (error nil)))
+    (lsp-ltex-plus--flymake-send lsp-ltex-plus--flymake-report-fn nil))
   (setq lsp-ltex-plus--flymake-report-fn nil)
   (remove-hook 'flymake-diagnostic-functions #'lsp-ltex-plus-flymake-backend t))
 

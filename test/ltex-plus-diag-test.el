@@ -162,5 +162,23 @@ function it handed out for the first check."
     (ltex-plus-fake-wait-for (lambda () (ltex-plus-diag-test--underlines buffer)))
     (should (= 1 (length (ltex-plus-diag-test--underlines buffer))))))
 
+(ert-deftest ltex-plus-diag-test-a-later-publish-replaces-the-earlier-one ()
+  "A new publish replaces what was shown; an empty one clears it.
+Flymake adds a backend's later reports to its earlier ones unless the
+report names a region, so without the region an underline the user did
+not edit away would stay for ever.  The text is not edited here, so
+nothing but the report can take the underlines away."
+  (ltex-plus-diag-test--with-checked-file buffer "teh one and teh two.\n"
+    (ltex-plus-fake-wait-for
+     (lambda () (= 2 (length (ltex-plus-diag-test--underlines buffer)))))
+    (let ((uri (lsp-ltex-plus--buffer-uri buffer))
+          (one (aref (ltex-plus-fake-diagnostics "teh one and teh two.\n") 0)))
+      (ltex-plus-fake-publish uri (vector one))
+      (ltex-plus-fake-wait-for
+       (lambda () (= 1 (length (ltex-plus-diag-test--underlines buffer)))))
+      (ltex-plus-fake-publish uri [])
+      (ltex-plus-fake-wait-for
+       (lambda () (null (ltex-plus-diag-test--underlines buffer)))))))
+
 (provide 'ltex-plus-diag-test)
 ;;; ltex-plus-diag-test.el ends here
