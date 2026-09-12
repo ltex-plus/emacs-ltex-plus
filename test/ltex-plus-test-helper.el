@@ -6,31 +6,24 @@
 
 ;;; Commentary:
 
-;; Loaded first by every file in `test/'.  It does three things, in order,
+;; Loaded first by every file in `test/'.  It does two things, in order,
 ;; and the order matters:
 ;;
-;; 1. Redirects `user-emacs-directory' into a throwaway sandbox.  Both
-;;    `lsp-mode' and this package derive file paths from it at *load* time
-;;    -- the four `lsp-ltex-plus-*-file' variables among them -- so a test
-;;    run must never see, and can never write to, the real one.  Without
-;;    this the suite silently mixes the developer's own dictionary into its
+;; 1. Redirects `user-emacs-directory' into a throwaway sandbox.  The
+;;    package derives file paths from it at *load* time -- the four
+;;    `lsp-ltex-plus-*-file' variables among them -- so a test run must
+;;    never see, and can never write to, the real one.  Without this the
+;;    suite silently mixes the developer's own dictionary into its
 ;;    results.
 ;;
-;; 2. Finds `lsp-mode' and its dependencies.  There is no Cask or Eldev
-;;    here, so the search is by convention: `LTEX_PLUS_LOAD_PATH' if set,
-;;    otherwise the first straight.el build tree or package.el archive
-;;    found in the usual places.  See `ltex-plus-test--dependency-roots'.
-;;
-;; 3. Loads the package, which runs `lsp-ltex-plus--setup' -- in the
-;;    sandbox, so it reads four files that do not exist.
+;; 2. Loads the package from this repository, by explicit path.
 ;;
 ;; What is left is fixtures.  `ltex-plus-test-with-project' builds a
 ;; throwaway project tree and visits files in it; `ltex-plus-test-reset'
 ;; empties every list the package holds in memory and points the global
 ;; files at a fresh directory.  Call the latter at the top of any test that
-;; asserts on list contents: `lsp-ltex-plus--setup' has run by then, and a
-;; test that inherits its state from a previous one is a test that passes
-;; alone and fails in the suite.
+;; asserts on list contents: a test that inherits its state from a
+;; previous one is a test that passes alone and fails in the suite.
 
 ;;; Code:
 
@@ -43,80 +36,11 @@
 (defconst ltex-plus-test-sandbox
   (file-name-as-directory (make-temp-file "ltex-plus-test-home-" t))
   "Throwaway `user-emacs-directory' for this Emacs process.
-Installed below before anything else is loaded, so that every path
-`lsp-mode' and the package compute from `user-emacs-directory' at load
-time lands here rather than in the developer's real configuration.")
+Installed below before anything else is loaded, so that every path the
+package computes from `user-emacs-directory' at load time lands here
+rather than in the developer's real configuration.")
 
 (setq user-emacs-directory ltex-plus-test-sandbox)
-
-;;;; -- Locating lsp-mode ------------------------------------------------------
-
-(defun ltex-plus-test--dependency-roots ()
-  "Return directories that hold one installed package per subdirectory.
-The package has no build tooling of its own, so `lsp-mode' is found
-wherever the developer already keeps it: a straight.el build tree or a
-package.el archive, under either the XDG or the classic Emacs directory.
-Set `LTEX_PLUS_LOAD_PATH' (colon-separated, added verbatim to
-`load-path') to override the search entirely."
-  (let ((xdg (or (getenv "XDG_CONFIG_HOME") "~/.config")))
-    (seq-filter
-     #'file-directory-p
-     (mapcar
-      #'expand-file-name
-      (delq nil
-            (list (getenv "LTEX_PLUS_STRAIGHT_BUILD")
-                  (expand-file-name "emacs/straight/build" xdg)
-                  "~/.emacs.d/straight/build"
-                  (expand-file-name "emacs/elpa" xdg)
-                  "~/.emacs.d/elpa"
-                  (bound-and-true-p package-user-dir)))))))
-
-(defun ltex-plus-test--add-dependencies ()
-  "Put `lsp-mode' and its dependencies on `load-path'.
-Honours `LTEX_PLUS_LOAD_PATH' when set.  Otherwise takes the first root
-from `ltex-plus-test--dependency-roots' that actually contains an
-`lsp-mode' installation and adds every package directory under it —
-`lsp-mode' pulls in dash, f, ht, spinner, markdown-mode and lv, and that
-list is upstream's to change, so the whole tree goes on rather than a
-hand-kept subset."
-  (if-let* ((explicit (getenv "LTEX_PLUS_LOAD_PATH")))
-      (dolist (dir (split-string explicit path-separator t))
-        (add-to-list 'load-path (expand-file-name dir)))
-    (let ((root (seq-find
-                 (lambda (dir)
-                   (directory-files dir nil "\\`lsp-mode\\(-[0-9]\\|\\'\\)" t))
-                 (ltex-plus-test--dependency-roots))))
-      (unless root
-        (error (concat "Cannot find lsp-mode.  Looked in %S.\n"
-                       "Set LTEX_PLUS_LOAD_PATH to a colon-separated list of"
-                       " directories holding lsp-mode and its dependencies,"
-                       " or LTEX_PLUS_STRAIGHT_BUILD to a straight.el build"
-                       " tree.")
-               (ltex-plus-test--dependency-roots)))
-      (dolist (dir (directory-files root t "\\`[^.]"))
-        (when (file-directory-p dir)
-          (add-to-list 'load-path dir))))))
-
-(defun ltex-plus-test--load-lsp-mode-autoloads ()
-  "Load `lsp-mode''s autoloads, as an installed Emacs would.
-`emacs -Q' loads no package autoloads, so every optional `lsp-mode'
-feature stays unbound -- and `lsp-configure-buffer' calls several of
-them by name.  A live workspace then dies on `void-function
-lsp-lens--enable', and the first such failure is swallowed by
-`with-demoted-errors' inside the message handler, so it surfaces later
-and somewhere else.  Loading the autoloads is what an installed session
-does, and costs nothing here."
-  (catch 'done
-    (dolist (dir load-path)
-      (let ((autoloads (expand-file-name "lsp-mode-autoloads.el" dir)))
-        (when (file-exists-p autoloads)
-          (load autoloads nil t)
-          (throw 'done t))))))
-
-(ltex-plus-test--add-dependencies)
-(ltex-plus-test--load-lsp-mode-autoloads)
-
-(require 'lsp-mode)
 
 ;;;; -- Loading the package under test -----------------------------------------
 
@@ -138,13 +62,7 @@ working directory and from any clone.")
 ;;     an interrupted `make compile' -- shadows the `.el' it was built from,
 ;;     so the suite quietly tests the previous version of the package;
 ;;   * the developer very likely has `lsp-ltex-plus' installed for their own
-;;     use, and that installation is on `load-path' too, since the search
-;;     above adds every package directory it finds.
-;;
-;; Loading the files runs `lsp-ltex-plus--setup' -- see the bottom of
-;; `lsp-ltex-plus.el'.  That is deliberate: the registration path is itself
-;; under test (see `ltex-plus-setup-test.el'), and running it in the sandbox
-;; costs four reads of files that do not exist.
+;;     use, and an installed copy may be on `load-path' too.
 (setq load-prefer-newer t)
 
 (defconst ltex-plus-test-package-files
@@ -159,60 +77,7 @@ working directory and from any clone.")
            file ltex-plus-test-repo-root))
   (load file nil t t))
 
-;;;; -- Assertions on JSON objects ---------------------------------------------
-
-;; `lsp-mode' represents JSON objects as hash tables, or as plists when it
-;; was byte-compiled with `lsp-use-plists' set (the default in Doom).  The
-;; package reads them through `lsp-get', which copes with either; fixtures
-;; must be built the same way or the suite passes on one machine and fails
-;; on the other for reasons that have nothing to do with the code.
-
-(defun ltex-plus-test-obj (&rest pairs)
-  "Build a JSON object from PAIRS in lsp-mode's current representation.
-PAIRS are alternating keyword keys and values, as in
-\(ltex-plus-test-obj :title \"Add \\='x\\='\" :kind \"quickfix\")."
-  (if (bound-and-true-p lsp-use-plists)
-      pairs
-    (let ((table (make-hash-table :test #'equal)))
-      (while pairs
-        (puthash (substring (symbol-name (pop pairs)) 1) (pop pairs) table))
-      table)))
-
-(defun ltex-plus-test-suggestion (command title key entries)
-  "Build a code action shaped like the ones ltex-ls-plus sends.
-COMMAND is the server command id, TITLE the server's own localised
-title, KEY the argument key carrying the entries \(`:words',
-`:ruleIds' or `:falsePositives'\) and ENTRIES a list of strings, filed
-under `:en-US'."
-  (ltex-plus-test-obj
-   :title title
-   :kind "quickfix.ltex.acceptSuggestions"
-   :command (ltex-plus-test-obj
-             :command command
-             :arguments (vector (ltex-plus-test-obj
-                                 key (ltex-plus-test-obj
-                                      :en-US (vconcat entries)))))))
-
-(defun ltex-plus-test-accept (action)
-  "Invoke ACTION's handler on its command object, as lsp-mode would.
-lsp-mode looks the handler up on the registered client through a live
-workspace, which a batch test has none of, so the mapping registered in
-`lsp-ltex-plus--setup' is spelled out here instead."
-  (let* ((command (lsp-get action :command))
-         (name (lsp-get command :command))
-         (handler (pcase name
-                    ("_ltex.addToDictionary"
-                     #'lsp-ltex-plus--action-add-to-dictionary)
-                    ("_ltex.disableRules"
-                     #'lsp-ltex-plus--action-disable-rules)
-                    ("_ltex.hideFalsePositives"
-                     #'lsp-ltex-plus--action-hide-false-positives)
-                    (_ (error "No handler registered for command %S" name)))))
-    (funcall handler command)))
-
-(defun ltex-plus-test-titles (actions)
-  "Return the `:title' of each action in ACTIONS, as a list."
-  (mapcar (lambda (action) (lsp-get action :title)) (append actions nil)))
+;;;; -- Demoted errors under ERT -----------------------------------------------
 
 (defmacro ltex-plus-test-without-debugger (&rest body)
   "Run BODY with `debug-on-error\=' nil, whatever ERT set it to.
@@ -225,20 +90,6 @@ such a test in this to assert on what a user actually gets."
   (declare (indent 0) (debug t))
   `(let ((debug-on-error nil))
      ,@body))
-
-(defun ltex-plus-test-workspace (&optional root)
-  "Return a workspace fixture rooted at ROOT, for the request handlers.
-The two handlers take (WORKSPACE PARAMS) and need no live process, but
-they do run inside `with-lsp-workspace\=', where `lsp--uri-to-path\='
-reaches for the workspace\='s client to look up a `uri->path\=' function.
-A workspace built without one signals `wrong-type-argument\=' there, so
-the fixture carries the real registered client, exactly as a live
-session would.  It used to fail silently instead, with every document
-answered from the wrong buffer, because the lookup was wrapped in
-`ignore-errors\='; that wrapper is gone."
-  (make-lsp--workspace
-   :root root
-   :client (gethash 'ltex-ls-plus lsp-clients)))
 
 ;;;; -- Reading the language-keyed plists --------------------------------------
 
@@ -272,12 +123,11 @@ KIND is a key of `lsp-ltex-plus--setting-kinds'."
 
 (defun ltex-plus-test-reset ()
   "Give the current test empty lists and its own global settings files.
-Loading the package ran `lsp-ltex-plus--setup', and any earlier test may
-have written to the mirrors; both are cleared here so that a result can
-only come from what the test itself put there.  The four global files are
-repointed at a fresh temporary directory, so a test that writes one never
-sees another test's leftovers — nor the developer's real dictionary,
-which the sandbox already rules out."
+Any earlier test may have written to the mirrors; they are cleared here
+so that a result can only come from what the test itself put there.  The
+four global files are repointed at a fresh temporary directory, so a
+test that writes one never sees another test's leftovers — nor the
+developer's real dictionary, which the sandbox already rules out."
   (setq ltex-plus-test--global-dir
         (file-name-as-directory (make-temp-file "ltex-plus-test-global-" t)))
   (setq lsp-ltex-plus-dictionary-file

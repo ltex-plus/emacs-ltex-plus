@@ -5,8 +5,8 @@
 # JVM, and they skip on their own when `LTEX_PLUS_LIVE' is unset.  Run
 # them locally with `make test-live' before tagging a release.
 #
-# The matrix is the declared floor (29.1, also what `lsp-mode' requires),
-# then the newest of each series, then master.  Both ends have already
+# The matrix is the declared floor (29.1), then the newest of each
+# series, then master.  Both ends have already
 # earned their place: ERT arms `debug-on-error' around every test up to
 # 29 and not after, and `checkdoc' turns its experimental verb check off
 # by default from 31 -- each of which failed a run that the other
@@ -41,27 +41,7 @@ jobs:
         with:
           version: ${{ matrix.emacs_version }}
 
-      # Into the default package.el directory, which is one of the places
-      # the test helper and the Makefile already look.  Deliberately
-      # unpinned: an upstream change that breaks this client should show
-      # up here rather than in a user's config.
-      - name: Install lsp-mode
-        run: |
-          emacs --batch --eval "(progn
-            (require 'package)
-            (add-to-list 'package-archives
-                         '(\"melpa\" . \"https://melpa.org/packages/\") t)
-            (package-initialize)
-            (package-refresh-contents)
-            (package-install 'lsp-mode))"
-
-      - name: Report versions
-        run: |
-          emacs --version | head -1
-          emacs --batch --eval "(progn
-            (require 'package) (package-initialize)
-            (message \"lsp-mode %s\"
-                     (package-desc-version
-                      (cadr (assq 'lsp-mode package-alist)))))"
+      - name: Report version
+        run: emacs --version | head -1
 
       - run: make check

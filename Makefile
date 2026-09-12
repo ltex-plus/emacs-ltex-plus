@@ -3,18 +3,14 @@
 #
 #   make test       run the ERT suite (test/); live tests skip
 #   make test-live  the same, with the tests that need a real ltex-ls-plus
-#   make live-repl  a daemon with the live fixture loaded, for debugging
 #   make compile    byte-compile the package files, warnings and all
 #   make checkdoc   docstring conventions
 #   make lint       package-lint, as MELPA runs it
 #   make check      all of the above
 #   make clean      remove build output
 #
-# Finding lsp-mode: every target below discovers it the same way the test
-# helper does -- a straight.el build tree or a package.el archive under the
-# usual directories.  Override with LTEX_PLUS_LOAD_PATH (colon-separated,
-# used verbatim) or LTEX_PLUS_STRAIGHT_BUILD (one directory holding a
-# package per subdirectory).  EMACS selects the binary.
+# The package depends on nothing outside Emacs itself, so no target needs
+# a load path beyond the repository.  EMACS selects the binary.
 #
 # Running one file, or one test:
 #   test/run-tests.sh project
@@ -29,12 +25,6 @@ PACKAGE_FILES := lsp-ltex-plus-bootstrap.el lsp-ltex-plus-settings.el lsp-ltex-p
 # then survives inside the single quotes and reaches Emacs as a symbol.
 # Make 3.81 (macOS) happens to collapse it there too, so an inline recipe
 # works locally and fails on a newer make -- which is how this reached CI.
-
-# Puts lsp-mode on `load-path' by reusing the test helper's own search, so
-# there is one place that knows where dependencies live.
-LOAD_DEPENDENCIES := --eval '(progn \
-  (add-to-list (quote load-path) (expand-file-name "test")) \
-  (load "ltex-plus-test-helper" nil t))'
 
 # Byte-compile into a temporary directory (see the `compile' target).
 COMPILE_SETUP := --eval '(progn \
@@ -63,14 +53,7 @@ CHECKDOC_RUN := --eval '(progn \
       (kill-emacs 1) \
     (message "checkdoc: clean")))'
 
-# Loads the live fixture into the daemon (see `live-repl').
-LIVE_REPL_SETUP := --eval '(progn \
-  (add-to-list (quote load-path) "$(CURDIR)") \
-  (add-to-list (quote load-path) "$(CURDIR)/test") \
-  (require (quote ltex-plus-live-helper)) \
-  (ltex-plus-live-configure))'
-
-.PHONY: all check test test-live live-repl compile checkdoc lint clean
+.PHONY: all check test test-live compile checkdoc lint clean
 
 all: check
 
@@ -85,17 +68,6 @@ test:
 test-live:
 	@LTEX_PLUS_LIVE=1 test/run-tests.sh
 
-# For working on a live test that fails: a daemon with the fixture
-# already loaded, so the session can be poked at from `emacsclient'
-# instead of being reconstructed from a batch backtrace.  Kill it with
-# `emacsclient -s ltex-test -e "(kill-emacs)"'.
-live-repl:
-	@LTEX_PLUS_LIVE=1 $(EMACS) --daemon=ltex-test $(LIVE_REPL_SETUP)
-	@echo 'Daemon "ltex-test" is up. Try:'
-	@echo '  emacsclient -s ltex-test -e "(ltex-plus-live-open (ltex-plus-live-write \"x.md\" \"He go home.\\n\"))"'
-	@echo '  emacsclient -s ltex-test -e "(ltex-plus-live-messages)"'
-	@echo '  emacsclient -s ltex-test -e "(kill-emacs)"'
-
 # Byte-compilation is a check in its own right: it is what catches a free
 # variable, a call with the wrong number of arguments, or a docstring that
 # has drifted from its argument list.  The output goes to a temporary
@@ -103,7 +75,7 @@ live-repl:
 # tree would shadow the `.el' on the next `make test' and quietly test the
 # previous version of the code.
 compile:
-	@$(EMACS) --batch -Q -L . $(LOAD_DEPENDENCIES) $(COMPILE_SETUP) \
+	@$(EMACS) --batch -Q -L . $(COMPILE_SETUP) \
 	  -f batch-byte-compile $(PACKAGE_FILES)
 
 # `checkdoc-file' only reports -- it warns and returns 0.  In batch the
@@ -111,7 +83,7 @@ compile:
 # status is whether *Warnings* exists at all.  A target that prints its
 # findings and then succeeds is one whose findings come back.
 checkdoc:
-	@$(EMACS) --batch -Q -L . $(LOAD_DEPENDENCIES) $(CHECKDOC_RUN)
+	@$(EMACS) --batch -Q -L . $(CHECKDOC_RUN)
 
 lint:
 	@dev/package-lint.sh

@@ -33,7 +33,7 @@
 
 (defgroup lsp-ltex-plus nil
   "Customization group for the LTEX+ grammar checker."
-  :group 'lsp-mode
+  :group 'text
   :prefix "lsp-ltex-plus-")
 
 ;; Directory-local safety, modelled on AUCTeX (and on Emacs core, which declares
@@ -1161,7 +1161,7 @@ A COMMAND carrying the marker left by `lsp-ltex-plus--split-suggestion'
 says so itself; otherwise `lsp-ltex-plus-save-additions-to' decides.
 Falls back to `global' whenever the project offers no file for KIND,
 so a suggestion is never a dead end."
-  (let ((marker (and command (lsp-get command lsp-ltex-plus--target-marker)))
+  (let ((marker (and command (plist-get command lsp-ltex-plus--target-marker)))
         (project (lsp-ltex-plus--project-file-for kind)))
     (cond
      ((not project) 'global)
@@ -1195,6 +1195,48 @@ the new entry without waiting for a modification-time comparison."
                                  (symbol-value (lsp-ltex-plus--kind-get kind :global-file))
                                  lang items)
     (lsp-ltex-plus--recompute-merged)))
+
+;;;; -- Values handed to the server ---------------------------------------------
+
+;; The two pieces of the configuration replies that are pure functions of the
+;; settings above.  They live here, beside the lists they read, so that the
+;; client layer that answers the server has nothing of its own to say about
+;; which words a document is checked against.
+
+(defun lsp-ltex-plus--enabled-languages ()
+  "Return the unique language IDs from `lsp-ltex-plus-major-modes'.
+All supported IDs are always returned.  Filtering happens client-side,
+via the dispatcher (`lsp-ltex-plus--maybe-activate') and the
+`lsp-ltex-plus-mode' guard: the server only ever sees documents for
+buffers in which the minor mode is active, so `ltex.enabled' can safely
+cover every registered language without triggering unwanted checks.
+
+This design differs from the VS Code LTeX+ extension, which (to the best
+of our knowledge) registers a static document selector covering every
+supported language and relies on `ltex.enabled' as a server-side runtime
+filter: the client always fires `textDocument/didChange' and the server
+drops notifications whose language ID is not enabled.  In the Emacs
+client the filter lives in the dispatcher instead, so the server only
+ever sees documents the user intended to check, and `ltex.enabled' is
+effectively a no-op by construction."
+  (seq-uniq (mapcar #'cadr lsp-ltex-plus-major-modes) #'string=))
+
+(defun lsp-ltex-plus--workspace-specific-entry ()
+  "Return the language-keyed settings for the document in the current buffer.
+
+The four fields are JSON objects per VS Code's TS type
+`LanguageSpecificSettingValue' — never nullable.  `lsp-ltex-plus--obj-or-empty'
+substitutes the shared empty hash-table for nil so `json-serialize' emits
+`{}' rather than `null'; see that helper's docstring for the underlying
+ambiguity.
+
+Each value comes from `lsp-ltex-plus--effective-plist', so a project that
+sets any of the `lsp-ltex-plus-project-*-file' settings has its own lists
+folded in on top of the global ones."
+  (list :dictionary           (lsp-ltex-plus--obj-or-empty (lsp-ltex-plus--effective-plist 'dictionary))
+        :disabledRules        (lsp-ltex-plus--obj-or-empty (lsp-ltex-plus--effective-plist 'disabled-rules))
+        :enabledRules         (lsp-ltex-plus--obj-or-empty (lsp-ltex-plus--effective-plist 'enabled-rules))
+        :hiddenFalsePositives (lsp-ltex-plus--obj-or-empty (lsp-ltex-plus--effective-plist 'hidden-false-positives))))
 
 (provide 'lsp-ltex-plus-settings)
 ;;; lsp-ltex-plus-settings.el ends here

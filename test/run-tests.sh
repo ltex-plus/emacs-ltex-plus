@@ -6,19 +6,9 @@
 #   test/run-tests.sh project additions   # only the named files (substring match)
 #   test/run-tests.sh -s SELECTOR         # an ERT selector, e.g. a test-name regexp
 #
-# Each file runs in its own Emacs batch process.  That is not just tidiness:
-# `ltex-plus-setup-test.el' switches on every optional feature and installs
-# global advice on `lsp-mode', and `ltex-plus-additions-test.el' overrides
-# `lsp-notify'.  Sharing one process would make the result depend on load
-# order, which is the sort of thing that shows up as a test failing only in
-# CI.
-#
-# Finding lsp-mode: the suite looks for a straight.el build tree or a
-# package.el archive under the usual XDG and classic Emacs directories.
-# Override with either of
-#
-#   LTEX_PLUS_LOAD_PATH      colon-separated directories, added verbatim
-#   LTEX_PLUS_STRAIGHT_BUILD one directory holding a package per subdirectory
+# Each file runs in its own Emacs batch process, so that no test file can
+# depend on what another one loaded or left behind.  With no global advice
+# left in the package this may be relaxed later; see test/README.md.
 #
 # Also honours EMACS (default: emacs).
 #

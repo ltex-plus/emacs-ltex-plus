@@ -25,9 +25,9 @@
 Two things can quietly substitute other code: a stale `.elc' beside the
 sources, and the developer's own installation of the package, which the
 dependency search puts on `load-path' along with everything else.  The
-helper loads the two files by explicit path to rule both out; this is
-that guarantee, asserted rather than assumed."
-  (dolist (symbol '(lsp-ltex-plus--setup lsp-ltex-plus--maybe-activate))
+helper loads the package files by explicit path to rule both out; this
+is that guarantee, asserted rather than assumed."
+  (dolist (symbol '(lsp-ltex-plus--merge-plists lsp-ltex-plus--maybe-activate))
     (should (member (symbol-file symbol 'defun) ltex-plus-test-package-files))))
 
 ;;;; -- The mode table ---------------------------------------------------------
@@ -190,42 +190,6 @@ than forcing that load; both answers must still be honoured."
              'text-mode '(lsp-ltex-plus-check-fileless-buffers t)))
     (should-not (ltex-plus-bootstrap-test--activations
                  'text-mode '(lsp-ltex-plus-check-fileless-buffers nil)))))
-
-;;;; -- Language id resolution -------------------------------------------------
-
-(ert-deftest ltex-plus-bootstrap-test-language-ids-are-registered ()
-  "`lsp-ltex-plus--setup' seeds `lsp-language-id-configuration'.
-Only to keep lsp-mode from warning \"Unable to calculate the
-languageId\"; the id actually sent comes from the `:language-id' lambda,
-which reads the same table."
-  (dolist (mode '(markdown-mode org-mode text-mode))
-    (should (assq mode lsp-language-id-configuration))))
-
-(ert-deftest ltex-plus-bootstrap-test-setup-leaves-the-table-alone-on-rerun ()
-  "Re-running setup adds nothing to `lsp-language-id-configuration'.
-`lsp-ltex-plus-reload-settings' calls `lsp-ltex-plus--setup', so repeated
-calls are a user-facing path: the mode registration pushes only entries
-that are absent, and must not grow the alist each time round."
-  (let ((before (copy-alist lsp-language-id-configuration)))
-    (lsp-ltex-plus--setup)
-    (should (equal lsp-language-id-configuration before))))
-
-(ert-deftest ltex-plus-bootstrap-test-setup-defers-to-lsp-mode ()
-  "A mode lsp-mode already maps is not remapped by our setup.
-The registration exists only to silence lsp-mode's \"Unable to calculate
-the languageId\" warning; where lsp-mode has an opinion it keeps it."
-  (let* ((mode 'ltex-plus-test-claimed-mode)
-         (lsp-language-id-configuration
-          (cons (cons mode "claimed-by-lsp-mode")
-                (copy-alist lsp-language-id-configuration)))
-         (lsp-ltex-plus-major-modes
-          (cons (list mode "claimed-by-ltex-plus" nil)
-                lsp-ltex-plus-major-modes)))
-    (lsp-ltex-plus--setup)
-    (should (equal (cdr (assq mode lsp-language-id-configuration))
-                   "claimed-by-lsp-mode"))
-    (should (= 1 (seq-count (lambda (e) (eq (car-safe e) mode))
-                            lsp-language-id-configuration)))))
 
 (provide 'ltex-plus-bootstrap-test)
 ;;; ltex-plus-bootstrap-test.el ends here
