@@ -8,12 +8,14 @@
 
 ;; What can be asserted about the connection without a server: how a
 ;; file name becomes a URI and comes back, what the `initialize' request
-;; carries, and how the executable is found.  Nothing here starts a
-;; process; the handshake itself is exercised against the fake server.
+;; carries, and how the executable is found -- and then, against the fake
+;; server in `ltex-plus-fake-server.el', the handshake, the ready queue
+;; and the shutdown sequence.  No real server process is ever started.
 
 ;;; Code:
 
 (require 'ltex-plus-test-helper)
+(require 'ltex-plus-fake-server)
 
 ;;;; -- URIs -------------------------------------------------------------------
 
@@ -146,6 +148,103 @@ user who unpacked a release somewhere expects it to do here."
                  temporary-file-directory))
   (should (equal (lsp-ltex-plus--local-directory temporary-file-directory)
                  (file-name-as-directory (expand-file-name temporary-file-directory)))))
+
+;;;; -- The handshake, against the fake ---------------------------------------
+
+(ert-deftest ltex-plus-conn-test-handshake-completes ()
+  "The client initializes, records what the server said, and says `initialized'."
+  (ltex-plus-fake-with-connection
+    (let ((conn (ltex-plus-fake-ready-connection)))
+      (should (equal (plist-get (lsp-ltex-plus--connection-server-info conn) :name)
+                     "ltex-ls-plus"))
+      (should (= 1 (plist-get (lsp-ltex-plus--connection-capabilities conn)
+                              :textDocumentSync)))
+      (should (= 1 (length (ltex-plus-fake-received 'initialized))))
+      ;; What actually went over the wire carried the opt-in.
+      (let ((sent (car (ltex-plus-fake-received 'initialize))))
+        (should (eq t (plist-get (plist-get (plist-get sent :initializationOptions)
+                                            :customCapabilities)
+                                 :workspaceSpecificConfiguration)))))))
+
+(ert-deftest ltex-plus-conn-test-work-waits-for-the-handshake ()
+  "A thunk queued before the reply runs after it; one queued after runs at once.
+Queued thunks keep their order, and the after-initialize hook runs
+before any of them, so configuration is pushed before documents open."
+  (ltex-plus-fake-with-connection
+    (let ((order nil))
+      (let ((lsp-ltex-plus--after-initialize-functions
+             (list (lambda (_conn) (push 'hook order)))))
+        (let ((conn (lsp-ltex-plus--ensure-connection)))
+          (lsp-ltex-plus--when-ready conn (lambda () (push 'first order)))
+          (lsp-ltex-plus--when-ready conn (lambda () (push 'second order)))
+          (should-not order)
+          (ltex-plus-fake-wait-for (lambda () (lsp-ltex-plus--connection-ready conn)))
+          (should (equal (reverse order) '(hook first second)))
+          (lsp-ltex-plus--when-ready conn (lambda () (push 'third order)))
+          (should (eq (car order) 'third)))))))
+
+(ert-deftest ltex-plus-conn-test-the-connection-is-reused-while-it-lives ()
+  "A second buffer asking for the server gets the same connection."
+  (ltex-plus-fake-with-connection
+    (let ((conn (ltex-plus-fake-ready-connection)))
+      (with-temp-buffer
+        (should (eq (lsp-ltex-plus--ensure-connection) conn))))))
+
+(ert-deftest ltex-plus-conn-test-shutdown-follows-the-protocol ()
+  "Stopping sends `shutdown' then `exit', ends the process, and forgets it."
+  (ltex-plus-fake-with-connection
+    (let ((conn (ltex-plus-fake-ready-connection))
+          (closed nil))
+      (let ((lsp-ltex-plus--after-shutdown-functions
+             (list (lambda (c) (setq closed c)))))
+        (lsp-ltex-plus--shutdown-connection)
+        (should (= 1 (length (ltex-plus-fake-received 'shutdown))))
+        (should (= 1 (length (ltex-plus-fake-received 'exit))))
+        (should-not (jsonrpc-running-p conn))
+        (should-not (lsp-ltex-plus--live-connection))
+        (should (eq closed conn))))))
+
+(ert-deftest ltex-plus-conn-test-a-dead-server-is-replaced ()
+  "After the process ends, the next request for a connection starts a new one."
+  (ltex-plus-fake-with-connection
+    (let ((first (ltex-plus-fake-ready-connection)))
+      (lsp-ltex-plus--shutdown-connection)
+      (ltex-plus-fake-start)
+      (let ((second (ltex-plus-fake-ready-connection)))
+        (should-not (eq first second))
+        (should (lsp-ltex-plus--connection-ready second))))))
+
+(ert-deftest ltex-plus-conn-test-an-unknown-request-is-refused-properly ()
+  "A request this client does not implement gets the protocol's own refusal.
+Method-not-found is -32601; an internal error would tell the server the
+client is broken rather than merely limited."
+  (ltex-plus-fake-with-connection
+    (ltex-plus-fake-ready-connection)
+    (let ((err (should-error (jsonrpc-request ltex-plus-fake-peer 'ltex/noSuchThing nil
+                                              :timeout 2)
+                             :type 'jsonrpc-error)))
+      (should (= -32601 (alist-get 'jsonrpc-error-code (cdr err)))))))
+
+(ert-deftest ltex-plus-conn-test-capability-registrations-are-accepted ()
+  "The bookkeeping requests a server may send are answered, not refused."
+  (ltex-plus-fake-with-connection
+    (ltex-plus-fake-ready-connection)
+    (should-not (jsonrpc-request ltex-plus-fake-peer 'client/registerCapability
+                                 '(:registrations []) :timeout 2))))
+
+(ert-deftest ltex-plus-conn-test-show-message-reaches-the-user ()
+  "`window/showMessage' is shown; `window/logMessage' is only logged."
+  (ltex-plus-fake-with-connection
+    (ltex-plus-fake-ready-connection)
+    (let ((shown nil))
+      (cl-letf (((symbol-function 'message)
+                 (lambda (fmt &rest args) (push (apply #'format fmt args) shown))))
+        (jsonrpc-notify ltex-plus-fake-peer 'window/showMessage
+                        '(:type 3 :message "Hello from the server"))
+        (jsonrpc-notify ltex-plus-fake-peer 'window/logMessage
+                        '(:type 3 :message "Only for the log"))
+        (ltex-plus-fake-wait-for (lambda () shown)))
+      (should (equal shown '("[ltex-ls-plus] Hello from the server"))))))
 
 (provide 'ltex-plus-conn-test)
 ;;; ltex-plus-conn-test.el ends here
