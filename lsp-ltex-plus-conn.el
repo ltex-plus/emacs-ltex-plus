@@ -316,10 +316,13 @@ while the server was starting, in the order they were queued."
                         (or (plist-get info :name) "<unnamed>")
                         (or (plist-get info :version) "<no version>")))
   (run-hook-with-args 'lsp-ltex-plus--after-initialize-functions conn)
+  ;; A hook may have stopped the server -- the version guard does -- in
+  ;; which case the queued work has nobody to talk to and is dropped.
   (let ((thunks (nreverse (lsp-ltex-plus--connection-pending conn))))
     (setf (lsp-ltex-plus--connection-pending conn) nil)
-    (dolist (thunk thunks)
-      (funcall thunk))))
+    (when (jsonrpc-running-p conn)
+      (dolist (thunk thunks)
+        (funcall thunk)))))
 
 (defun lsp-ltex-plus--when-ready (conn thunk)
   "Call THUNK once CONN has completed its handshake.
@@ -760,6 +763,91 @@ version is always taken."
             (run-hook-with-args 'lsp-ltex-plus--diagnostics-functions buffer)))
       (lsp-ltex-plus--log "Dropping diagnostics for %s, which no buffer holds" uri))))
 
+;;;; -- The server's version -----------------------------------------------------
+
+;; An out-of-date server does not fail outright; it lacks features this
+;; package assumes, and the symptom is a diagnostic that never appears or
+;; a setting that seems to be ignored.  So once the server has said what
+;; it is, its version is compared against the floor the package is
+;; written for, and by default a server below it is stopped, with a
+;; message that names the way out.
+
+(defun lsp-ltex-plus--installed-server-version ()
+  "Return the version the installed `ltex-ls-plus' reports, or nil.
+Runs the binary with `--version\=', which prints JSON:
+
+  {\"ltex-ls\": \"18.7.1-alpha.32+2026-08-26.g7977ac67\", \"java\": \"21.0.10\"}
+
+Used only when the running server did not report a version through the
+protocol; see `lsp-ltex-plus--enforce-server-version\='.
+
+A binary that exists and carries the executable bit can still be one the
+kernel refuses to run: built for another architecture, truncated, or a
+script whose interpreter is missing.  Each arrives here as a
+`file-error\=' and is something to fix on disk, so the file is named
+along with the reason.  Only that condition is caught: anything else is
+a fault in this function and must not be turned into a missing version."
+  (when-let* ((executable (lsp-ltex-plus--server-executable)))
+    (with-temp-buffer
+      (when (condition-case err
+                (eq 0 (call-process executable nil t nil "--version"))
+              (file-error
+               (message "[lsp-ltex-plus] Cannot run %s: %s"
+                        executable (error-message-string err))
+               nil))
+        (goto-char (point-min))
+        (when (re-search-forward
+               "\"ltex-ls\"[[:space:]]*:[[:space:]]*\"\\([^\"]+\\)\"" nil t)
+          (match-string 1))))))
+
+(defun lsp-ltex-plus--version-at-least-p (version minimum)
+  "Return non-nil when VERSION is MINIMUM or newer.
+Only the leading numeric part of VERSION is compared: a release carries
+build metadata (\"18.7.1-alpha.32+2026-08-26.g7977ac67\") that
+`version-to-list\=' cannot read.  A VERSION that is not a version string
+at all -- nil included -- is never new enough."
+  (and (stringp version)
+       (string-match "\\`\\([0-9]+\\(?:\\.[0-9]+\\)*\\)" version)
+       (not (version< (match-string 1 version) minimum))))
+
+(defun lsp-ltex-plus--enforce-server-version (conn)
+  "Stop CONN when the server it connected to is too old.
+On `lsp-ltex-plus--after-initialize-functions'.  The version is the one
+the server put in the `serverInfo\=' of its `initialize\=' reply; a
+server that gave none is asked through its binary instead.  A version
+that cannot be determined at all counts as a failure rather than as a
+pass: the server answered the handshake, so it should have been able to
+say what it is.
+
+Either way the user is told.  Whether the server is then stopped is up
+to `lsp-ltex-plus-require-minimum-server-version\='; opting out keeps it
+running, with the warning standing.  Stopping ends the connection, which
+switches the mode off in the buffers waiting for it."
+  (let* ((info (lsp-ltex-plus--connection-server-info conn))
+         (version (or (plist-get info :version)
+                      (lsp-ltex-plus--installed-server-version)))
+         (stopping lsp-ltex-plus-require-minimum-server-version))
+    (setq lsp-ltex-plus--server-name (plist-get info :name)
+          lsp-ltex-plus--server-version version)
+    (unless (lsp-ltex-plus--version-at-least-p version lsp-ltex-plus-minimum-server-version)
+      (message
+       (concat "[lsp-ltex-plus] "
+               (if version
+                   (format "ltex-ls-plus %s is older than %s, which this package needs."
+                           version lsp-ltex-plus-minimum-server-version)
+                 "Cannot determine the ltex-ls-plus version.")
+               (if stopping " Stopping the server." " Some features may not work.")
+               "  See https://github.com/ltex-plus/emacs-ltex-plus/#server-installation"
+               (when stopping
+                 (concat ", or set `lsp-ltex-plus-require-minimum-server-version'"
+                         " to nil to keep using it."))))
+      (when stopping
+        (lsp-ltex-plus--shutdown-connection conn)))))
+
+;; First on the hook, so that nothing is pushed to a server about to be
+;; stopped.
+(add-hook 'lsp-ltex-plus--after-initialize-functions #'lsp-ltex-plus--enforce-server-version -10)
+
 ;;;; -- Configuration -----------------------------------------------------------
 
 ;; The server pulls settings before every check, and tags each requested
@@ -827,11 +915,12 @@ against until its first pull, and it is what tells the server to pull
 again after a setting changed; the per-document values come back in
 the reply to that pull."
   (when-let* ((conn (or conn (lsp-ltex-plus--live-connection))))
-    (lsp-ltex-plus--log "Pushing configuration")
+    (when (jsonrpc-running-p conn)
+      (lsp-ltex-plus--log "Pushing configuration")
     (jsonrpc-notify conn 'workspace/didChangeConfiguration
                     (list :settings
                           (list :ltex (with-temp-buffer
-                                        (lsp-ltex-plus--settings-object)))))))
+                                        (lsp-ltex-plus--settings-object))))))))
 
 (add-hook 'lsp-ltex-plus--after-initialize-functions #'lsp-ltex-plus--push-configuration)
 

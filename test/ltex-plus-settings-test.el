@@ -302,6 +302,197 @@ edited file reaches the next check."
   (lsp-ltex-plus--setup)
   (should (equal (ltex-plus-test-words lsp-ltex-plus--dictionary-merged) '("once"))))
 
+;;;; -- The server version guard -----------------------------------------------
+
+;; Checked once the server has connected and said what it is.  A server
+;; below the floor, or one that cannot say, is stopped -- unless the user
+;; has opted out, in which case the warning stands and the server does not.
+
+(ert-deftest ltex-plus-settings-test-version-comparison-ignores-build-metadata ()
+  "A release version compares on its leading numbers alone.
+Real versions carry a pre-release suffix and build metadata that
+`version-to-list' will not read, so comparing whole strings signals."
+  (should (lsp-ltex-plus--version-at-least-p "18.7" "18.7.0"))
+  (should (lsp-ltex-plus--version-at-least-p "18.7.0" "18.7.0"))
+  (should (lsp-ltex-plus--version-at-least-p
+           "18.7.1-alpha.32+2026-08-26.g7977ac67" "18.7.0"))
+  (should (lsp-ltex-plus--version-at-least-p "19.0" "18.7.0"))
+  (should-not (lsp-ltex-plus--version-at-least-p "18.6.9" "18.7.0"))
+  (should-not (lsp-ltex-plus--version-at-least-p "17.9" "18.7.0")))
+
+(ert-deftest ltex-plus-settings-test-an-unreadable-version-is-never-new-enough ()
+  "Anything that is not a version fails the comparison.
+The guard treats that as a failure rather than a pass: a server that
+completed the handshake should have been able to say what it is."
+  (should-not (lsp-ltex-plus--version-at-least-p nil "18.7.0"))
+  (should-not (lsp-ltex-plus--version-at-least-p "" "18.7.0"))
+  (should-not (lsp-ltex-plus--version-at-least-p "unknown" "18.7.0")))
+
+(defmacro ltex-plus-settings-test--connecting-to (version binary &rest body)
+  "Run BODY with the fake reporting VERSION and the client connected to it.
+BINARY is what asking the installed binary for its version would answer;
+the fake's fixture exposes whatever ltex-ls-plus this machine has, so the
+probe is stubbed rather than run.  Inside BODY, `conn' is the connection
+and `warned' the package's messages to the user, joined, or nil.  VERSION
+nil makes the fake omit it from `serverInfo', as a server that cannot
+say would."
+  (declare (indent 2) (debug t))
+  `(ltex-plus-fake-with-connection
+     (let ((ltex-plus-fake-server-version ,version)
+           (said nil))
+       (cl-letf (((symbol-function 'message)
+                  (lambda (format &rest args)
+                    (push (apply #'format format args) said)))
+                 ((symbol-function 'lsp-ltex-plus--installed-server-version)
+                  (lambda () ,binary)))
+         (let ((conn (lsp-ltex-plus--ensure-connection)))
+           (ltex-plus-fake-wait-for
+            (lambda () (or (not (jsonrpc-running-p conn))
+                           (and (lsp-ltex-plus--connection-ready conn)
+                                (ltex-plus-fake-received 'workspace/didChangeConfiguration)))))
+           (let ((warned (let ((ours (seq-filter (lambda (m) (string-prefix-p "[lsp-ltex-plus]" m))
+                                                 (reverse said))))
+                           (and ours (string-join ours "\n")))))
+             (ignore conn warned)
+             ,@body))))))
+
+(ert-deftest ltex-plus-settings-test-an-old-server-is-stopped ()
+  "A server below the floor is stopped, and the user is told which.
+Nothing is pushed to a server about to be stopped, and the protocol's
+two steps are still observed on the way out."
+  (let ((lsp-ltex-plus-require-minimum-server-version t))
+    (ltex-plus-settings-test--connecting-to "18.6.9" nil
+      (should-not (jsonrpc-running-p conn))
+      (should-not (lsp-ltex-plus--live-connection))
+      (should (string-match-p "18\\.6\\.9" warned))
+      (should (string-match-p (regexp-quote lsp-ltex-plus-minimum-server-version) warned))
+      (should (string-match-p "lsp-ltex-plus-require-minimum-server-version" warned))
+      (should-not (ltex-plus-fake-received 'workspace/didChangeConfiguration))
+      (should (ltex-plus-fake-received 'shutdown)))))
+
+(ert-deftest ltex-plus-settings-test-opting-out-keeps-the-server-running ()
+  "Opting out leaves the server up, and still warns.
+The user has said they know; that is a reason not to stop them, not a
+reason to stop telling them."
+  (let ((lsp-ltex-plus-require-minimum-server-version nil))
+    (ltex-plus-settings-test--connecting-to "18.6.9" nil
+      (should (jsonrpc-running-p conn))
+      (should warned)
+      (should (string-match-p "18\\.6\\.9" warned))
+      (should (ltex-plus-fake-received 'workspace/didChangeConfiguration)))))
+
+(ert-deftest ltex-plus-settings-test-a-current-server-is-left-alone ()
+  "A server meeting the floor is neither stopped nor mentioned, and is recorded."
+  (let ((lsp-ltex-plus-require-minimum-server-version t))
+    (ltex-plus-settings-test--connecting-to "18.7.1-alpha.32+2026-08-26.g7977ac67" nil
+      (should (jsonrpc-running-p conn))
+      (should-not warned)
+      (should (equal lsp-ltex-plus--server-name "ltex-ls-plus"))
+      (should (equal lsp-ltex-plus--server-version "18.7.1-alpha.32+2026-08-26.g7977ac67")))))
+
+(ert-deftest ltex-plus-settings-test-a-silent-server-is-asked-through-its-binary ()
+  "With no version in `serverInfo', the binary is asked and its answer used."
+  (let ((lsp-ltex-plus-require-minimum-server-version t))
+    (ltex-plus-settings-test--connecting-to nil "18.6.9"
+      (should-not (jsonrpc-running-p conn))
+      (should (string-match-p "18\\.6\\.9" warned)))
+    (ltex-plus-settings-test--connecting-to nil "18.7.5"
+      (should (jsonrpc-running-p conn))
+      (should-not warned)
+      (should (equal lsp-ltex-plus--server-version "18.7.5")))))
+
+(ert-deftest ltex-plus-settings-test-an-undeterminable-version-is-stopped ()
+  "A version nobody can read is treated as a failure, not a pass.
+The server answered the handshake, so it should have been able to say
+what it is; that it could not means something is wrong."
+  (let ((lsp-ltex-plus-require-minimum-server-version t))
+    (ltex-plus-settings-test--connecting-to nil nil
+      (should-not (jsonrpc-running-p conn))
+      (should (string-match-p "Cannot determine" warned)))))
+
+(ert-deftest ltex-plus-settings-test-a-stopped-server-switches-the-mode-off ()
+  "The mode goes off in a buffer that was waiting for a server the guard stopped.
+Its didOpen never goes out, and its mode line does not claim a check."
+  (let ((lsp-ltex-plus-require-minimum-server-version t)
+        (ltex-plus-fake-server-version "18.6.9")
+        (inhibit-message t))
+    (ltex-plus-fake-with-connection
+      (ltex-plus-test-with-project '(("note.rst" . "Text.\n"))
+        (let ((buffer (ltex-plus-test-visit (project-file "note.rst"))))
+          (with-current-buffer buffer
+            (rst-mode)
+            (lsp-ltex-plus-mode 1)
+            (should lsp-ltex-plus-mode))
+          (let ((conn lsp-ltex-plus--connection))
+            (ltex-plus-fake-wait-for (lambda () (not (jsonrpc-running-p conn)))))
+          (should-not (buffer-local-value 'lsp-ltex-plus-mode buffer))
+          (should-not (ltex-plus-fake-received 'textDocument/didOpen)))))))
+
+(defmacro ltex-plus-settings-test--with-fake-binary (contents mode &rest body)
+  "Run BODY with a fake `ltex-ls-plus' of CONTENTS and file MODE.
+`exec-path' holds only the directory that fake sits in, so a real
+`ltex-ls-plus' installed on this machine cannot answer instead.
+`messaged' is bound to whatever the probe reported to the user."
+  (declare (indent 2) (debug t))
+  `(let* ((dir (file-name-as-directory (make-temp-file "ltex-plus-bin-" t)))
+          (binary (expand-file-name "ltex-ls-plus" dir))
+          (exec-path (list dir))
+          (lsp-ltex-plus-ls-plus-executable "ltex-ls-plus")
+          (lsp-ltex-plus-ltex-ls-path nil)
+          (messaged nil))
+     (unwind-protect
+         (progn
+           (with-temp-file binary (insert ,contents))
+           (set-file-modes binary ,mode)
+           (cl-letf (((symbol-function 'message)
+                      (lambda (fmt &rest args)
+                        (setq messaged (apply #'format fmt args)))))
+             ,@body))
+       (delete-directory dir t))))
+
+(ert-deftest ltex-plus-settings-test-the-probe-reads-the-version ()
+  "A binary that answers `--version' has its version parsed out."
+  (ltex-plus-settings-test--with-fake-binary
+      "#!/bin/sh\necho '{\"ltex-ls\": \"18.7.1-alpha.32\", \"java\": \"21.0.10\"}'\n"
+      #o755
+    (should (equal (lsp-ltex-plus--installed-server-version) "18.7.1-alpha.32"))
+    (should-not messaged)))
+
+(ert-deftest ltex-plus-settings-test-an-unrunnable-binary-is-reported ()
+  "A file the kernel refuses to run is named, with the reason.
+The executable bit is all that is checked before running it, so a
+wrong-architecture binary, a truncated download, or a script whose
+interpreter is gone all get this far.  Each is something to fix on disk,
+and the caller's own message -- that no version could be determined --
+would not point at any of them."
+  (ltex-plus-settings-test--with-fake-binary "#!/no/such/interpreter\n" #o755
+    (should-not (lsp-ltex-plus--installed-server-version))
+    (should (string-match-p "Cannot run" messaged))
+    (should (string-match-p "ltex-ls-plus" messaged)))
+  (ltex-plus-settings-test--with-fake-binary "" #o755
+    (should-not (lsp-ltex-plus--installed-server-version))
+    (should (string-match-p "Cannot run" messaged))))
+
+(ert-deftest ltex-plus-settings-test-a-silent-binary-is-not-reported-as-unrunnable ()
+  "A binary that runs but says nothing useful yields nil, quietly.
+It ran, so there is nothing on disk to fix; the caller's own message
+about an undeterminable version is the right one and the only one."
+  (ltex-plus-settings-test--with-fake-binary "#!/bin/sh\necho nonsense\n" #o755
+    (should-not (lsp-ltex-plus--installed-server-version))
+    (should-not messaged))
+  (ltex-plus-settings-test--with-fake-binary "#!/bin/sh\nexit 3\n" #o755
+    (should-not (lsp-ltex-plus--installed-server-version))
+    (should-not messaged)))
+
+(ert-deftest ltex-plus-settings-test-the-probe-catches-only-file-errors ()
+  "Anything that is not a `file-error' propagates.
+The catch covers the binary refusing to run.  A fault in this function
+is not that, and must not be quietly turned into a missing version."
+  (ltex-plus-settings-test--with-fake-binary "#!/bin/sh\necho hi\n" #o755
+    (cl-letf (((symbol-function 'call-process)
+               (lambda (&rest _) (error "Bug in the probe"))))
+      (should-error (lsp-ltex-plus--installed-server-version) :type 'error))))
+
 ;;;; -- The settings object ----------------------------------------------------
 
 (defconst ltex-plus-settings-test--documented-keys

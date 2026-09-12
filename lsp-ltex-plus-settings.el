@@ -718,17 +718,16 @@ consulted by `lsp-ltex-plus--load-project-plist'; see the
 `lsp-ltex-plus-project-*-file' settings.")
 
 (defvar lsp-ltex-plus--server-name nil
-  "Name the connected ltex-ls-plus reported via `serverInfo', or nil.
-Captured in `:initialized-fn' from the `initialize' response.  Stays nil
-on an `lsp-mode' that lacks the `serverInfo' accessors or against a
-server that omits `serverInfo'.")
+  "Name the connected ltex-ls-plus gave in the `serverInfo\\=' of its reply, or nil.
+Set by `lsp-ltex-plus--enforce-server-version\\=' once the handshake has
+completed; nil against a server that omits `serverInfo\\='.")
 
 (defvar lsp-ltex-plus--server-version nil
-  "Version string the connected ltex-ls-plus reported via `serverInfo', or nil.
-Captured in `:initialized-fn' from the `initialize' response.  Stays nil
-on an `lsp-mode' that lacks the `serverInfo' accessors or against a
-server that omits the version.  The raw string is stored verbatim (e.g.
-\"18.7.0-alpha.94+2026-05-31.gb2fd8fa0\"); no parsing is done here.")
+  "Version of the ltex-ls-plus the session last connected to, or nil.
+Set by `lsp-ltex-plus--enforce-server-version\\=' from the `serverInfo\\='
+the server sent in its `initialize\\=' reply, or failing that from
+running the binary with `--version\\='.  Stored verbatim, build metadata
+and all, e.g. \"18.7.1-alpha.32+2026-08-26.g7977ac67\".")
 
 ;; -- JSON-serialization helpers -----------------------------------------------
 ;;

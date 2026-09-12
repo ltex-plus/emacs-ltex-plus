@@ -129,8 +129,9 @@ the protocol default the client declared."
   (pcase method
     ('initialize
      (list :capabilities ltex-plus-fake-capabilities
-           :serverInfo (list :name "ltex-ls-plus"
-                             :version ltex-plus-fake-server-version)))
+           :serverInfo (append (list :name "ltex-ls-plus")
+                               (and ltex-plus-fake-server-version
+                                    (list :version ltex-plus-fake-server-version)))))
     ('shutdown nil)
     ('textDocument/codeAction ltex-plus-fake-code-actions)
     (_ (jsonrpc-error :code -32601 :message (format "Unknown method %s" method)))))
