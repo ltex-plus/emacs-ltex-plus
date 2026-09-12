@@ -369,6 +369,10 @@ ended regardless."
   "The version of this buffer's document last sent to the server.
 Incremented on every `didChange', as the protocol requires.")
 
+(defvar-local lsp-ltex-plus--change-timer nil
+  "The timer that will send this buffer's pending edits, or nil.
+See the Edits section below.")
+
 (defun lsp-ltex-plus--language-id (&optional buffer)
   "Return the LSP language id for BUFFER (default the current buffer).
 Read from `lsp-ltex-plus-major-modes'; a mode not listed there is sent
@@ -433,6 +437,8 @@ that is already open does nothing."
             lsp-ltex-plus--document-version 1)
       (puthash uri buffer lsp-ltex-plus--documents)
       (add-hook 'kill-buffer-hook #'lsp-ltex-plus--close-document nil t)
+      (add-hook 'after-change-functions #'lsp-ltex-plus--after-change nil t)
+      (add-hook 'after-save-hook #'lsp-ltex-plus--after-save nil t)
       (lsp-ltex-plus--log "didOpen %s as %s" (buffer-name buffer) (lsp-ltex-plus--language-id))
       (jsonrpc-notify conn 'textDocument/didOpen
                       (list :textDocument
@@ -440,6 +446,18 @@ that is already open does nothing."
                                   :languageId (lsp-ltex-plus--language-id)
                                   :version lsp-ltex-plus--document-version
                                   :text (lsp-ltex-plus--document-text)))))))
+
+(defun lsp-ltex-plus--detach-document ()
+  "Forget that the current buffer is open, without telling the server.
+Clears the identity, the hooks and any edit still waiting to be sent."
+  (when lsp-ltex-plus--change-timer
+    (cancel-timer lsp-ltex-plus--change-timer)
+    (setq lsp-ltex-plus--change-timer nil))
+  (setq lsp-ltex-plus--document-uri nil
+        lsp-ltex-plus--document-version 0)
+  (remove-hook 'kill-buffer-hook #'lsp-ltex-plus--close-document t)
+  (remove-hook 'after-change-functions #'lsp-ltex-plus--after-change t)
+  (remove-hook 'after-save-hook #'lsp-ltex-plus--after-save t))
 
 (defun lsp-ltex-plus--close-document (&optional buffer)
   "Close BUFFER (default the current buffer) on the server and forget it.
@@ -450,9 +468,7 @@ tell."
     (when-let* ((uri (buffer-local-value 'lsp-ltex-plus--document-uri buffer)))
       (with-current-buffer buffer
         (remhash uri lsp-ltex-plus--documents)
-        (setq lsp-ltex-plus--document-uri nil
-              lsp-ltex-plus--document-version 0)
-        (remove-hook 'kill-buffer-hook #'lsp-ltex-plus--close-document t)
+        (lsp-ltex-plus--detach-document)
         (when-let* ((conn (lsp-ltex-plus--live-connection)))
           (lsp-ltex-plus--log "didClose %s" (buffer-name buffer))
           (jsonrpc-notify conn 'textDocument/didClose
@@ -465,13 +481,63 @@ are; a new server will be told about them when they next need one."
   (maphash (lambda (_uri buffer)
              (when (buffer-live-p buffer)
                (with-current-buffer buffer
-                 (setq lsp-ltex-plus--document-uri nil
-                       lsp-ltex-plus--document-version 0)
-                 (remove-hook 'kill-buffer-hook #'lsp-ltex-plus--close-document t))))
+                 (lsp-ltex-plus--detach-document))))
            lsp-ltex-plus--documents)
   (clrhash lsp-ltex-plus--documents))
 
 (add-hook 'lsp-ltex-plus--after-shutdown-functions #'lsp-ltex-plus--forget-documents)
+
+;;;; -- Edits ------------------------------------------------------------------
+
+;; The server advertises full synchronisation: every `didChange' carries
+;; the whole text, and the server re-checks the whole document.  What an
+;; edit changed is therefore irrelevant; when to send is the only
+;; question, and the answer is a debounce.  Each edit restarts a timer of
+;; `lsp-ltex-plus-change-delay' seconds, so a burst of typing goes out
+;; once, when it pauses.  A plain timer rather than an idle timer: it
+;; behaves the same in a batch Emacs, where nothing is ever idle.
+
+(defun lsp-ltex-plus--after-change (&rest _)
+  "Note an edit to the current buffer; on `after-change-functions'.
+The edit itself is not looked at, see the comment above."
+  (when lsp-ltex-plus--document-uri
+    (when lsp-ltex-plus--change-timer
+      (cancel-timer lsp-ltex-plus--change-timer))
+    (setq lsp-ltex-plus--change-timer
+          (run-with-timer lsp-ltex-plus-change-delay nil
+                          #'lsp-ltex-plus--send-changes (current-buffer)))))
+
+(defun lsp-ltex-plus--send-changes (&optional buffer)
+  "Send the text of BUFFER (default the current buffer) to the server now.
+Sends nothing when nothing is pending, when the buffer is not open, or
+when the server has gone."
+  (let ((buffer (or buffer (current-buffer))))
+    (when (buffer-live-p buffer)
+      (with-current-buffer buffer
+        (when lsp-ltex-plus--change-timer
+          (cancel-timer lsp-ltex-plus--change-timer)
+          (setq lsp-ltex-plus--change-timer nil)
+          (when-let* ((uri lsp-ltex-plus--document-uri)
+                      (conn (lsp-ltex-plus--live-connection)))
+            (cl-incf lsp-ltex-plus--document-version)
+            (lsp-ltex-plus--log "didChange %s v%d" (buffer-name) lsp-ltex-plus--document-version)
+            (jsonrpc-notify conn 'textDocument/didChange
+                            (list :textDocument
+                                  (list :uri uri
+                                        :version lsp-ltex-plus--document-version)
+                                  :contentChanges
+                                  (vector (list :text (lsp-ltex-plus--document-text)))))))))))
+
+(defun lsp-ltex-plus--after-save ()
+  "Tell the server the current buffer was saved; on `after-save-hook'.
+Any pending edit goes first, so the server checks what was saved.  With
+`lsp-ltex-plus-check-frequency' at \"save\" this is what triggers the
+check."
+  (when-let* ((uri lsp-ltex-plus--document-uri))
+    (lsp-ltex-plus--send-changes)
+    (when-let* ((conn (lsp-ltex-plus--live-connection)))
+      (jsonrpc-notify conn 'textDocument/didSave
+                      (list :textDocument (list :uri uri))))))
 
 ;;;; -- What the server sends --------------------------------------------------
 

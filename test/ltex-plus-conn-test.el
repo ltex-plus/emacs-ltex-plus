@@ -343,5 +343,84 @@ which fails in a batch Emacs."
     (fundamental-mode)
     (should (equal (lsp-ltex-plus--language-id) "plaintext"))))
 
+;;;; -- Edits ------------------------------------------------------------------
+
+(defmacro ltex-plus-conn-test--with-open-document (var contents &rest body)
+  "Run BODY with VAR bound to a buffer of CONTENTS that is open on the fake.
+Waits for the `didOpen' so BODY starts from a quiet wire, with a short
+change delay in force."
+  (declare (indent 2) (debug (symbolp form body)))
+  `(ltex-plus-fake-with-connection
+     (ltex-plus-conn-test--with-open-file ,var ,contents
+       (let ((lsp-ltex-plus-change-delay 0.1))
+         (lsp-ltex-plus--open-document ,var)
+         (ltex-plus-fake-wait-for
+          (lambda () (ltex-plus-fake-received 'textDocument/didOpen)))
+         ,@body))))
+
+(ert-deftest ltex-plus-conn-test-a-burst-of-edits-is-sent-once ()
+  "Edits inside the delay coalesce into one full-text `didChange'.
+The version goes up by one, and the text sent is the buffer as it is
+when the burst ends, not as it was at the first keystroke."
+  (ltex-plus-conn-test--with-open-document buffer "One.\n"
+    (with-current-buffer buffer
+      (goto-char (point-max))
+      (insert "Two.")
+      (insert " Three.")
+      (insert "\n"))
+    (ltex-plus-fake-wait-for (lambda () (ltex-plus-fake-received 'textDocument/didChange)))
+    (accept-process-output nil 0.3)
+    (let ((sent (ltex-plus-fake-received 'textDocument/didChange)))
+      (should (= 1 (length sent)))
+      (should (= 2 (plist-get (plist-get (car sent) :textDocument) :version)))
+      (should (equal (plist-get (aref (plist-get (car sent) :contentChanges) 0) :text)
+                     "One.\nTwo. Three.\n")))))
+
+(ert-deftest ltex-plus-conn-test-each-pause-bumps-the-version ()
+  "Two bursts separated by a pause are two sends, versions 2 and 3."
+  (ltex-plus-conn-test--with-open-document buffer "One.\n"
+    (with-current-buffer buffer (goto-char (point-max)) (insert "Two.\n"))
+    (ltex-plus-fake-wait-for (lambda () (= 1 (length (ltex-plus-fake-received
+                                                       'textDocument/didChange)))))
+    (with-current-buffer buffer (goto-char (point-max)) (insert "Three.\n"))
+    (ltex-plus-fake-wait-for (lambda () (= 2 (length (ltex-plus-fake-received
+                                                       'textDocument/didChange)))))
+    (should (equal (mapcar (lambda (p) (plist-get (plist-get p :textDocument) :version))
+                           (ltex-plus-fake-received 'textDocument/didChange))
+                   '(2 3)))))
+
+(ert-deftest ltex-plus-conn-test-saving-sends-pending-edits-then-didsave ()
+  "A save flushes what is pending first, so the server checks the saved text."
+  (ltex-plus-conn-test--with-open-document buffer "One.\n"
+    (with-current-buffer buffer
+      (goto-char (point-max))
+      (insert "Two.\n")
+      (let ((inhibit-message t)) (save-buffer)))
+    (ltex-plus-fake-wait-for (lambda () (ltex-plus-fake-received 'textDocument/didSave)))
+    (let ((methods (mapcar #'car (reverse ltex-plus-fake-received))))
+      (should (equal (seq-filter (lambda (m) (memq m '(textDocument/didChange
+                                                      textDocument/didSave)))
+                                 methods)
+                     '(textDocument/didChange textDocument/didSave))))))
+
+(ert-deftest ltex-plus-conn-test-closing-drops-a-pending-edit ()
+  "Killing the buffer inside the delay sends `didClose' and no `didChange'."
+  (ltex-plus-conn-test--with-open-document buffer "One.\n"
+    (with-current-buffer buffer (goto-char (point-max)) (insert "Two.\n"))
+    (kill-buffer buffer)
+    (ltex-plus-fake-wait-for (lambda () (ltex-plus-fake-received 'textDocument/didClose)))
+    (accept-process-output nil 0.3)
+    (should-not (ltex-plus-fake-received 'textDocument/didChange))))
+
+(ert-deftest ltex-plus-conn-test-the-fake-rechecks-what-it-was-sent ()
+  "The fake publishes for the text it holds, which is the full text sent.
+This pins the fixture the diagnostics tests will rely on."
+  (ltex-plus-conn-test--with-open-document buffer "Fine.\n"
+    (with-current-buffer buffer (goto-char (point-max)) (insert "Now teh end.\n"))
+    (ltex-plus-fake-wait-for (lambda () (ltex-plus-fake-received 'textDocument/didChange)))
+    (should (equal (cdr (assoc (lsp-ltex-plus--buffer-uri buffer) ltex-plus-fake-documents))
+                   (cons 2 "Fine.\nNow teh end.\n")))
+    (should (= 1 (length (ltex-plus-fake-diagnostics "Fine.\nNow teh end.\n"))))))
+
 (provide 'ltex-plus-conn-test)
 ;;; ltex-plus-conn-test.el ends here

@@ -144,6 +144,7 @@ silently do nothing would say it works."
             lsp-ltex-plus-disabled-rules
             lsp-ltex-plus-hidden-false-positives
             lsp-ltex-plus-check-frequency
+            lsp-ltex-plus-change-delay
             lsp-ltex-plus-diagnostic-severity
             lsp-ltex-plus-check-programming-languages
             lsp-ltex-plus-check-fileless-buffers

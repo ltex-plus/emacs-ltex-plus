@@ -554,6 +554,16 @@ Possible severities are \"error\", \"warning\", \"information\", and \"hint\"."
   :safe #'stringp
   :group 'lsp-ltex-plus)
 
+(defcustom lsp-ltex-plus-change-delay 0.5
+  "Seconds of quiet after an edit before the buffer is sent to the server.
+Every edit restarts the wait, so a burst of typing is sent once, when it
+pauses.  The server re-checks the whole document on each send, so this
+is the one knob that trades responsiveness against work: lower it for
+quicker feedback, raise it on a slow machine or for very large files."
+  :type 'number
+  :safe #'numberp
+  :group 'lsp-ltex-plus)
+
 (defcustom lsp-ltex-plus-clear-diagnostics-when-closing-file t
   "If set to true, diagnostics of a file are cleared when the file is closed."
   :type 'boolean
