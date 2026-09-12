@@ -204,15 +204,13 @@ Attached once to `after-change-major-mode-hook' by
 `lsp-ltex-plus-enable-for-modes'.  The full `lsp-ltex-plus' package is loaded
 lazily on the first call that reaches `lsp-ltex-plus-mode'.
 
-By default, buffers without a file name are skipped, since `lsp-mode's
-machinery is built around `file://' URIs.  This filters out transient
-buffers created by other modes (e.g., markdown-mode's syntax-highlighting
-helpers that spawn buffers in `python-ts-mode').  When the user opts in
-via `lsp-ltex-plus-check-fileless-buffers', file-less buffers are also
-activated; the mode then assigns them a synthetic URI (see
-`lsp-ltex-plus--setup-fileless-buffer').  The variable lives in the
-lazily-loaded full package, so it is read with `bound-and-true-p' to
-avoid forcing that load from the dispatcher."
+Buffers without a file name are activated only when
+`lsp-ltex-plus-check-fileless-buffers' says so, which it does by
+default; set it to nil to filter out transient buffers created by other
+modes (e.g., markdown-mode's syntax-highlighting helpers that spawn
+buffers in `python-ts-mode').  The variable lives in the lazily-loaded
+full package, so it is read with `bound-and-true-p' to avoid forcing
+that load from the dispatcher."
   (when (and (memq major-mode lsp-ltex-plus--enabled-modes)
              (or (buffer-file-name)
                  (bound-and-true-p lsp-ltex-plus-check-fileless-buffers)))

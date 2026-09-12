@@ -3,6 +3,29 @@
 ## [Unreleased]
 
 
+## [1.0.0] - 2026-09-12
+
+The client no longer runs on `lsp-mode`. It speaks the Language Server Protocol itself, over the `jsonrpc` library bundled with Emacs, and shows the server's findings through flymake. The package name, the repository and every `lsp-ltex-plus-*` setting that still means something are unchanged; what changes is what you install beside it, how diagnostics are displayed, and where the commands are bound.
+
+### Changed
+- **No `lsp-mode` dependency.** `Package-Requires` names only Emacs 29.1. The connection to `ltex-ls-plus` is a `jsonrpc-process-connection`: framing, request correlation and the server's own requests are the library's, and the JSON-RPC routing bug the old Kind-First patch worked around does not exist in it. One server serves every buffer in the session, started by the first buffer that needs it; a buffer is either open on it or not, so there is no workspace to find or join and nothing to negotiate with another language server in the same buffer.
+- **Diagnostics through flymake, not flycheck.** `lsp-ltex-plus-mode` adds a backend to the buffer's `flymake-diagnostic-functions` and turns `flymake-mode` on. Flymake's list of backends is buffer-local and takes many, so the client sits beside whatever `texlab`, `eglot` or `lsp-mode` installed with no priority to arrange. Every publish from the server is reported to flymake straight away, without flymake being asked to check again. A flycheck checker is planned as an addition; the flymake path stays primary.
+- **Commands have their own keymap.** Under `lsp-ltex-plus-keymap-prefix`, `C-c "` by default: `a` offers what the server suggests for the region or the diagnostic at point (`lsp-ltex-plus-code-actions`), `d` adds the word at point to the dictionary (`lsp-ltex-plus-add-to-dictionary`), `r` reloads the settings, `l` lists the dictionary in force. The old `C-c l a a` was `lsp-mode`'s binding and is gone with it. The menu is the package's own: under `either-allowing-user-choice` the project and global variants of a suggestion are two entries of it, and there is no second place, such as a modeline count, that could disagree.
+- **One knob for responsiveness.** `lsp-ltex-plus-change-delay` (default 0.5 s) is how long after the last edit the buffer is sent to the server. It replaces `lsp-idle-delay`, `flycheck-idle-change-delay` and `lsp-debounce-full-sync-notifications-interval`, none of which apply any more. It is read in the buffer being edited, so a project can set it in its `.dir-locals.el`.
+- **`lsp-ltex-plus-reload-settings` pushes to the one connection.** It re-reads the four list files and tells the running server the configuration changed; there is no client registration to redo. What it cannot reach is a setting the server reads only when it starts — the executable, the Java it runs with — for which there is now `lsp-ltex-plus-restart-server`; `lsp-ltex-plus-shutdown-server` stops the server outright and switches the mode off wherever it was on.
+- **File-less buffers have an invented identity, not a synthetic file.** A buffer with no file is opened under `ltex-plus://buffer/<pid>-<n>`; the server treats a document's URI as an opaque name — it checked documents under this scheme, under `untitled:` and under `file://` alike when asked — so there is no path under the temporary directory and nothing on disk. Saving such a buffer to a file closes the invented document and reopens it under the file's name, whether or not the save changes the major mode. Comint buffers are checked as before — the input region only, nothing while the program streams output, cleared on submit — but positions are converted with the region's start as origin, so the prompt padding the flycheck column arithmetic needed is gone.
+- **The server version is read from the `initialize` reply.** The guard that stops a server older than 18.7.0 no longer depends on `lsp-mode` accessors from an unmerged pull request; `serverInfo` is read directly, and the binary is asked only when the server gave no version.
+- **Two settings now do what their documentation says.** `lsp-ltex-plus-java-path` is passed to the launcher as `JAVA_HOME`, and the `bin` directory under `lsp-ltex-plus-ltex-ls-path` is searched for the executable. Both were only ever forwarded to the server before, which ignores them.
+- **The offline test suite runs in one Emacs process** and includes a fake `ltex-ls-plus` on the pattern of `jsonrpc`'s own tests, so the connection layer is exercised in CI rather than only by the live suite. The live suite runs against the real server as before; its first run is what showed that `ltex-ls-plus` abandons a check when a configuration pull is refused, and the fake was made as strict.
+
+### Removed
+- **Six settings that only meant something under `lsp-mode`** are retired and marked obsolete; a configuration that sets them keeps loading. `lsp-ltex-plus-apply-kind-first-patch` patched a router that is no longer used; `lsp-ltex-plus-multi-root` asked for workspace reuse that is now simply how the connection works; `lsp-ltex-plus-show-progress` silenced a spinner the client no longer has; `lsp-ltex-plus-show-latency` measured through advice on `lsp-mode` internals; `lsp-ltex-plus-server-input-log` and `lsp-ltex-plus-server-output-log` named tee log files that duplicated what the jsonrpc events buffer, `*ltex-ls-plus events*`, records.
+- **Word completion is not requested.** `lsp-ltex-plus-completion-enabled` is still sent to the server, but the client does not issue `textDocument/completion`; the old behaviour came from `lsp-mode`'s completion machinery.
+
+### Fixed
+- **The position conversion counts UTF-16 code units,** as the protocol's default and what the client declares. Text after an emoji is underlined where it is.
+
+
 ## [0.6.0] - 2026-09-01
 
 ### Changed

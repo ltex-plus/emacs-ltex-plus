@@ -10,13 +10,42 @@ test/run-tests.sh project      # files whose name contains "project"
 test/run-tests.sh -s "\"cache\""   # an ERT selector
 ```
 
-Each file runs in its own Emacs batch process. That is not tidiness:
-`ltex-plus-setup-test.el` switches on every optional feature and installs
-global advice on `lsp-mode`, and `ltex-plus-additions-test.el` overrides
-`lsp-notify`. Sharing one process would make results depend on load order.
+The selected files run in one Emacs batch process. Nothing a file loads
+or leaves behind reaches another: the fake server is started and stopped
+per test, and every test that asserts on list contents resets them
+first.
 
 No `ltex-ls-plus` binary is involved and no server is started, except in
-`ltex-plus-live-test.el` — see **Live tests** below.
+`ltex-plus-live-test.el` — see **Live tests** below. The shared helper
+makes sure of that by pointing the executable setting at a name that does
+not exist; on a machine with `ltex-ls-plus` on `PATH`, a test that
+reached for a connection without the fake in place once started a JVM,
+and every later test reused it in place of the fake and timed out for no
+visible reason.
+
+## The fake server
+
+`ltex-plus-fake-server.el` is an `ltex-ls-plus` that lives inside the
+test's own Emacs, on the pattern of `jsonrpc`'s own tests: a loopback
+socket accepts one connection and wraps it in a server-side
+`jsonrpc-process-connection`. The client under test is pointed at it by
+overriding the one function that creates the server process; everything
+above that function — the handshake, the dispatchers, document sync,
+diagnostics, code actions — runs unchanged.
+
+The fake behaves the way the real server was observed to. It answers
+`initialize` with the capabilities `ltex-ls-plus` advertises, and on
+every `didOpen` and `didChange` it pulls configuration through both of
+the server's requests before publishing one diagnostic per match of
+`ltex-plus-fake-flag-regexp` (by default the word `teh`), with positions
+in UTF-16 code units. It is as strict as the real server about a refused
+pull: `ltex-ls-plus` abandons the check when either configuration request
+is answered with an error, and so does the fake. Every message it
+receives is recorded in `ltex-plus-fake-received`, so a test can assert on
+exactly what went over the wire; `ltex-plus-fake-code-actions` is what it
+answers a code action request with.
+
+What it cannot stand in for is the real server's judgement of a text.
 
 ## Live tests
 
@@ -26,113 +55,65 @@ than `ltex-plus-live-server-floor` — every test in it reports as
 *skipped* with the reason, rather than being invisible.
 
 The whole file costs about twenty seconds, nearly all of it one JVM
-start: `lsp-keep-workspace-alive` holds the server up between tests, so
-each document after the first is tens of milliseconds. That is why there
-is no daemon here; a daemon would save the half-second of Emacs startup
-and give back the shared state that one process per file exists to
-avoid. `make live-repl` starts one anyway — for poking at a failing test
-by hand, which is a different job.
+start: one connection serves every buffer in the session and stays up
+between tests, so each document after the first is tens of milliseconds.
+Every test works from any server state — the first buffer to need a
+server starts one — so a test that stops the server costs the next one a
+start and nothing more.
 
-Three things a batch Emacs needs before `lsp-mode` will work at all, all
-set by `ltex-plus-live-configure`:
+A batch Emacs needs one thing set, by `ltex-plus-live-configure`: a short
+change delay. The client asks no questions and needs no autoloads.
 
-- **`lsp-mode`'s autoloads must be loaded.** `emacs -Q` loads none, so
-  `lsp-configure-buffer` dies on `void-function lsp-lens--enable` — and
-  the first such failure is swallowed by `with-demoted-errors`, so it
-  surfaces later and somewhere else.
-- **`lsp-debounce-full-sync-notifications` must be nil.** Otherwise
-  `didChange` is deferred to a `run-with-idle-timer`, and a batch Emacs
-  never goes idle: idle time is measured from the last input event and
-  there are none. The edit never reaches the server.
-- **The prompts must be answered in advance** — `lsp-auto-guess-root`,
-  `lsp-restart`, `lsp-warn-no-matched-clients` — since there is no stdin
-  to answer them from and an unset one hangs rather than fails.
-
-And two rules for the tests themselves. Wait on a predicate with a
-deadline (`ltex-plus-live-until`), never on a duration. And never read
-"no diagnostics" as an answer: it is indistinguishable from "not checked
+Two rules for the tests themselves. Wait on a predicate with a deadline
+(`ltex-plus-live-until`), never on a duration. And never read "no
+diagnostics" as an answer: it is indistinguishable from "not checked
 yet", so anything asserting an absence goes through
 `ltex-plus-live-after-publish`, which waits for the server to speak about
-*that document* — counting publishes globally is not enough, and that is
-not hypothetical, it is what the first run of this file did.
+*that buffer* — counting publishes globally is not enough.
 
-## Finding `lsp-mode`
+## What the fixtures exist for
 
-The package has no Cask or Eldev file, so the suite finds `lsp-mode` by
-convention: the first straight.el build tree or package.el archive under
-`$XDG_CONFIG_HOME/emacs`, `~/.config/emacs` or `~/.emacs.d`. Two escape
-hatches, both read by `ltex-plus-test-helper.el`:
+**`user-emacs-directory` is redirected before anything is loaded.** The
+package computes paths from it at load time — the four
+`lsp-ltex-plus-*-file` variables among them. Without the sandbox a test
+run reads the developer's own dictionary and mixes it into the results,
+which looks like the code working. `ltex-plus-test-reset` goes further
+and repoints the four files at a fresh directory per test, so a test can
+only see what it wrote itself.
 
-| Variable | Meaning |
-|---|---|
-| `LTEX_PLUS_LOAD_PATH` | Colon-separated directories, added to `load-path` verbatim |
-| `LTEX_PLUS_STRAIGHT_BUILD` | One directory holding a package per subdirectory |
-| `EMACS` | Which Emacs to run (default `emacs`) |
-
-## Two things the fixtures exist for
-
-**`user-emacs-directory` is redirected before anything is loaded.** Both
-`lsp-mode` and this package compute paths from it at load time — the four
-`lsp-ltex-plus-*-file` variables among them. Without the sandbox a test run
-reads the developer's own dictionary and mixes it into the results, which
-looks like the code working. `ltex-plus-test-reset` goes further and
-repoints the four files at a fresh directory per test, so a test can only
-see what it wrote itself.
-
-**JSON objects are built through `ltex-plus-test-obj`.** `lsp-mode`
-represents them as hash tables, or as plists when it was byte-compiled with
-`lsp-use-plists` (the default in Doom). The package reads them with
-`lsp-get`, which copes with either; a fixture that hard-codes one
-representation passes on one machine and fails on the other for reasons
-that have nothing to do with the code under test.
+**JSON is what `jsonrpc` hands out.** Objects are plists with keyword
+keys, arrays are vectors, `null` is `nil` and `false` is `:json-false`.
+Fixtures are written as plain plists; `ltex-plus-test-suggestion` builds
+a code action shaped like the ones the real server sends.
 
 ## What each file covers
 
 | File | Covers |
 |---|---|
 | `ltex-plus-bootstrap-test.el` | The mode table, the three `enable-for-modes` keywords, and the single dispatcher — including the exact-match rule that keeps `text-mode` from activating in `org-mode` buffers |
-| `ltex-plus-settings-test.el` | Merging, reading and writing the four language-keyed lists; the invariant that a code action never writes to a defcustom; the JSON boundary helpers; the `.eld` migration |
-| `ltex-plus-scope-test.el` | Resolving a document URI to its buffer, and two documents in one session being answered from their own buffers rather than from whichever came first |
+| `ltex-plus-settings-test.el` | Merging, reading and writing the four language-keyed lists; the invariant that a code action never writes to a defcustom; the JSON boundary helpers; the `.eld` migration; the reload command; the server version guard; the settings object and its key set |
+| `ltex-plus-conn-test.el` | URIs, the `initialize` request, finding the executable, and against the fake: the handshake, work queued behind it, shutdown, document open and close, debounced edits, receiving diagnostics, and position conversion in UTF-16 with and without a document region |
+| `ltex-plus-diag-test.el` | The flymake backend: conversion, the kept report function, and through flymake itself, underlines that appear, change and clear from the server's publishes alone |
+| `ltex-plus-scope-test.el` | Both configuration replies answered per document from the buffer the URI names, a dead document answered globally, sections, and the pulls seen over the wire |
 | `ltex-plus-project-test.el` | Project word lists merging with the global ones, relative paths resolving against the `.dir-locals.el` directory, and the modification-time cache |
-| `ltex-plus-additions-test.el` | Where an accepted suggestion is written, all three values of `lsp-ltex-plus-save-additions-to`, the two-suggestion split, and the pass-through for other servers' code actions |
+| `ltex-plus-actions-test.el` | Which diagnostics go out as context, the code action request, applying workspace edits, the menu and the dictionary shortcut, and the keymap |
+| `ltex-plus-additions-test.el` | Where an accepted suggestion is written, all three values of `lsp-ltex-plus-save-additions-to`, the three commands, and the two-suggestion split |
 | `ltex-plus-safety-test.el` | The `:safe` declarations — the endpoint allowlist, the project-path rule, and the policy that everything else is vouched for on a type check |
-| `ltex-plus-synthetic-test.el` | File-less and comint buffers: the virtual-buffer plists, the comint input region and its busy gate, and routing a `WorkspaceEdit` back to a buffer that visits no file |
-| `ltex-plus-setup-test.el` | The client registration, the settings surface (the push and the pull describing the same settings), the gated advice bodies, and that re-running setup never installs an advice twice |
-| `ltex-plus-mode-test.el` | What the minor mode decides before it reaches for a server: the programming-language guard, registering an unseen major mode, and giving up when the binary is missing |
-| `ltex-plus-patch-test.el` | Kind-First routing: a server request with a colliding id stays a request |
-| `ltex-plus-benchmark-test.el` | The latency advice: that `lsp-notify` is always called through, and the per-workspace measurement bookkeeping |
-| `ltex-plus-live-test.el` | Opt-in, against a real server: the whole pipeline, per-project language and dictionaries, file-less buffers, teardown, and the reload broadcast |
-
-## What is deliberately not covered
-
-Roughly a sixth of the package never executes during a run, and almost
-all of it is code that only runs with a live workspace: the minor mode's
-five-way startup `cond` and its deactivation path, `--rejoin-workspace`,
-the comint submit re-sync, `--fileless-on-save`, and the broadcast half
-of `lsp-ltex-plus-reload-settings`. Mocking `lsp-mode` far enough to
-reach them would produce a fixture that drifts from the real thing and
-tests itself; the manual checklist in the developer guide covers them
-instead.
-
-The two deprecated protocol backports (`--create-filter-function-patch`,
-`--request-while-no-input-patch`) are left alone deliberately. They are
-installed only on an `lsp-mode` predating the upstream fixes; if one
-breaks, an issue is the right way to hear about it.
-
-There is no integration test against a real `ltex-ls-plus`. The protocol
-facts the client is built on were established by driving the server from
-a raw Python client (see `dev/`), and they are recorded in the developer
-guide; nothing here re-checks them against a running server.
+| `ltex-plus-synthetic-test.el` | File-less buffers: the invented identity, its reuse, edits and pulls reaching the buffer, and the handover when the buffer is saved to a file |
+| `ltex-plus-comint-test.el` | The comint input region: what is sent, positions past the prompt, output above the region sending nothing, the busy gate, submitting |
+| `ltex-plus-mode-test.el` | What the minor mode decides before it reaches for a server, and against the fake, what it does once it has one, including the shutdown and restart commands |
+| `ltex-plus-live-test.el` | Opt-in, against a real server: the whole pipeline, both configuration pulls, code actions, per-project language and dictionaries, the reload broadcast, file-less and comint buffers, teardown, and shutdown |
 
 ## Adding a test
 
 Put it in the file that owns the area, `(require 'ltex-plus-test-helper)`
-first, and call `ltex-plus-test-reset` at the top of anything that asserts
-on list contents. A new file is picked up by the runner as soon as it is
-named `*-test.el`.
+first — and `(require 'ltex-plus-fake-server)` if it needs a server — and
+call `ltex-plus-test-reset` at the top of anything that asserts on list
+contents. A new file is picked up by the runner as soon as it is named
+`*-test.el`.
 
 Say in the docstring what breaks if the test fails, not what the code does.
 Most of what is tested here has no visible symptom when it regresses — a
-document checked against the wrong project's dictionary, an advice
-installed twice, a config pull answered from an arbitrary buffer — and the
-docstring is where that ends up recorded.
+document checked against the wrong project's dictionary, a stale
+underline nothing clears, a config pull answered from the wrong buffer —
+and the docstring is where that ends up recorded.

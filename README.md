@@ -4,15 +4,17 @@
 <!-- ltex: dictionary+=plist -->
 <!-- ltex: dictionary+=defcustom -->
 <!-- ltex: dictionary+=LTeX+ -->
+<!-- ltex: dictionary+=jsonrpc -->
+<!-- ltex: dictionary+=flymake -->
 
-`lsp-ltex-plus` is a lightweight [lsp-mode](https://github.com/emacs-lsp/lsp-mode) client for **LTeX+**, a powerful grammar and spell checker powered by [LanguageTool](https://languagetool.org/).
+`lsp-ltex-plus` is a lightweight Emacs client for **LTeX+**, a powerful grammar and spell checker powered by [LanguageTool](https://languagetool.org/). It speaks the Language Server Protocol to the `ltex-ls-plus` server over the `jsonrpc` library that ships with Emacs, and shows the server's findings through flymake. It depends on nothing outside Emacs itself.
 
 *Developed and tested on Emacs 31.1. Requires Emacs 29.1 or later.*
 
-This package allows you to have professional-grade grammar checking in Emacs while you write Markdown, LaTeX, Org-mode, Magit-commit messages, and more — and also checks grammar and spelling inside comments and string literals of 30+ programming languages. It is designed to be an "add-on" server, meaning it runs quietly in the background alongside your existing language servers without interfering with them. With the local backend, checks typically complete fast enough to feel instant while you type — see [Performance](#performance) for measured numbers and a reproducible benchmark.
+This package gives you professional-grade grammar checking in Emacs while you write Markdown, LaTeX, Org-mode, Magit commit messages, and more — and also checks grammar and spelling inside comments and string literals of 30+ programming languages. It runs quietly beside your existing language servers, whatever client drives them, without interfering with them. With the local backend, checks typically complete fast enough to feel instant while you type — see [Performance](#performance).
 
 ![LTeX+ in action](screenshot.jpg)
-*LTeX+ in action: `C-c l a a` activates the LSP actions, allowing you to choose the suitable correction (e.g., fixing "your" to "you're" in the example above). The key binding can be customized by configuring the `lsp-mode` package.*
+*LTeX+ in action: `C-c " a` offers the server's suggestions, allowing you to choose the suitable correction (e.g., fixing "your" to "you're" in the example above). The prefix is `lsp-ltex-plus-keymap-prefix`.*
 
 For detailed information about the underlying LTeX+ server and its capabilities, please refer to the [official LTeX+ documentation](https://ltex-plus.github.io/ltex-plus/index.html).
 
@@ -21,8 +23,7 @@ For detailed information about the underlying LTeX+ server and its capabilities,
 If you use Emacs for writing—perhaps in the humanities, social sciences, or law—rather than for programming, the term "LSP" might be new to you. Here is a simple way to understand how this works:
 
 *   **The LSP Server (LTeX+):** This is a separate program that runs in the background on your computer. It "reads" your document as you type and identifies errors, much like the grammar checkers in Microsoft Word or Google Docs.
-*   **The Bridge (lsp-mode):** This is a popular Emacs package that manages the connection between Emacs and these background programs.
-*   **The Client (lsp-ltex-plus):** This is the package you are looking at right now. It acts as the specific "translator" that tells Emacs exactly how to interact with the LTeX+ grammar server.
+*   **The Client (lsp-ltex-plus):** This is the package you are looking at now. It starts the server, sends it what you write, and shows what it finds. The conversation between the two follows the Language Server Protocol, carried by a small library that is part of Emacs; nothing else needs installing on the Emacs side.
 
 While this technology was originally built for programmers to find "bugs" in their code, we use it here to provide a powerful, professional-grade assistant for your writing.
 
@@ -37,54 +38,36 @@ LTeX+ can operate in two distinct ways, depending on your needs:
 
 ## Features
 
-- **Concurrent Execution:** Works simultaneously with other LSP servers (like `texlab` for LaTeX or `pyright` for Python).
+- **Runs Beside Anything:** Diagnostics go through flymake, whose list of backends is buffer-local and takes many. LTeX+ sits beside whatever `texlab`, `pyright` or any other server installed — under `eglot` or `lsp-mode` alike — with no priority to arrange.
 - **Smart Persistence:** Words you "add to dictionary" or rules you disable are automatically saved to your Emacs directory and remembered across sessions.
-- **Bi-directional Support:** Handles advanced server requests (like dynamic configuration fetching) safely.
+- **Per-project Lists:** A project can keep its own dictionary and rule lists in its `.dir-locals.el`, merged with your global ones.
 - **Highly Configurable:** Easily switch languages, enable "picky" grammar rules, or connect to a premium LanguageTool account.
 - **Wide Language Support:** Pre-configured for Markdown, LaTeX, Org, RestructuredText, HTML, BibTeX, and many others.
 - **Checks More Than Files:** Grammar-checks buffers with no file on disk (`*scratch*`, capture buffers) and the active input region of comint shells, REPLs, and AI agent shells — handy for composing prose into a prompt or command.
-- **Programming Language Support:** Optionally checks grammar and spelling in comments of 30+ programming languages (Python, C, C++, Rust, Java, …), running transparently alongside the primary language server thanks to its add-on design. Disabled by default (matching LTeX+), opt-in via `lsp-ltex-plus-check-programming-languages`.
-- **Lightweight & Lazy-loading:** Split into a tiny bootstrap file loaded at Emacs startup and a full client loaded on first use of a supported buffer, so startup time is essentially unaffected.
-- **Intuitive API:** A deliberately small surface area — one entry point (`lsp-ltex-plus-enable-for-modes`) plus customisation variables under a consistent `lsp-ltex-plus-` prefix, so configuration is discoverable through `customize-group` or tab-completion.
+- **Programming Language Support:** Optionally checks grammar and spelling in comments of 30+ programming languages (Python, C, C++, Rust, Java, …). Disabled by default (matching LTeX+), opt-in via `lsp-ltex-plus-check-programming-languages`.
+- **Lightweight & Lazy-loading:** Split into a tiny bootstrap file loaded at Emacs startup and the full client loaded on first use of a supported buffer, so startup time is essentially unaffected.
+- **Intuitive API:** A deliberately small surface — one entry point (`lsp-ltex-plus-enable-for-modes`), a handful of commands under one prefix, and customisation variables under a consistent `lsp-ltex-plus-` prefix, so configuration is discoverable through `customize-group` or tab-completion.
 
 ## Performance
 
-`lsp-ltex-plus` is fast. On an Apple M2, grammar checking a full-page Markdown or Org buffer completes in about **70 ms**, and a longer LaTeX document (around 15 KB) in about **150 ms** — both comfortably inside the threshold that feels instantaneous while typing. The package ships with a small built-in benchmark (`lsp-ltex-plus-show-latency`) that echoes the round-trip time to the minibuffer after every check, so you can reproduce these numbers on your own hardware; see [Measuring Server Latency](#measuring-server-latency) for how to enable it.
+`lsp-ltex-plus` is fast. On an Apple M2, grammar checking a full-page Markdown or Org buffer completes in about **70 ms**, and a longer LaTeX document (around 15 KB) in about **150 ms** — both comfortably inside the threshold that feels instantaneous while typing.
 
-Two caveats worth stating honestly:
+There is one knob on this side: `lsp-ltex-plus-change-delay` (default 0.5 s), how long after your last keystroke the buffer is sent to the server. Every edit restarts the wait, so a burst of typing is sent once, when it pauses. Lower it for quicker feedback; raise it on a slow machine or for very large files. The server re-checks the whole document on each send, so this is the whole trade-off. Flymake draws the underlines the moment the server's answer arrives; there is no second cadence to tune.
 
-- **What you *see* on screen is slower than what the server reports.** The figures above measure the round-trip from `textDocument/didChange` to `textDocument/publishDiagnostics`. Between `publishDiagnostics` arriving and the squiggly underline appearing in the buffer, Emacs still has to pass the diagnostic through `lsp-mode`'s idle cadence (`lsp-idle-delay`, default 0.5 s), the full-sync debounce, and the Flycheck / Flymake overlay refresh. With stock settings the visible delay can add several hundred milliseconds on top of the server round-trip. The grammar checker is not the bottleneck in an Emacs session — the display pipeline typically is. Normal users, however, would likely find Emacs' default settings quite acceptable when typing or editing texts. 
+A remote LanguageTool server is noticeably slower: pointed at the hosted service, the round-trip stretches to roughly **1–4 seconds** depending on network conditions and how busy the service is. That is the trade-off for Premium-only rules; the local backend is what most users will want for interactive writing.
 
-  For a snappier response, consider lowering `lsp-idle-delay` (default 0.5 s), `flycheck-idle-change-delay` (default 0.5 s), and `lsp-debounce-full-sync-notifications-interval` (default 1.0 s). The last of these races against a secondary flush path in lsp-mode that fires whenever Emacs is about to send any outgoing LSP message — a completion request, a hover, a periodic `textDocument/documentHighlight` fired by `lsp-on-idle-hook` after `lsp-idle-delay` seconds of inactivity, or even traffic from a co-tenant server on the same buffer. Whichever of the two paths fires first drains the queue, so reducing the interval only starts to bite once it drops below typical inter-message times (~`lsp-idle-delay`). If you want the interval to be the sole flush trigger — useful mainly when benchmarking or reasoning about timing — additionally set `(setq lsp-flush-delayed-changes-before-next-message nil)` to temporarily disable the secondary flush path.
-
-  For more advanced performance tuning (such as increasing the garbage collection threshold or switching to plists), see [Slow Server Response / High CPU Usage](#slow-server-response--high-cpu-usage) in the Troubleshooting section.
-- **A remote LanguageTool server is noticeably slower.** If you point `lsp-ltex-plus-lt-server-uri` at the hosted service, the round-trip stretches to roughly **1–4 seconds** depending on network conditions and how busy the service is. That is the trade-off for Premium-only rules, but the local backend is likely what the majority of users may want for an interactive writing experience.
+To see the exchange itself, with timestamps, look at the `*ltex-ls-plus events*` buffer — see [Watching the wire](#watching-the-wire).
 
 ## Prerequisites
 
 Before using this package, you need:
 
-1.  **Emacs:** Version **29.1** or later — the floor is set by `lsp-mode`, which requires it. Tree-sitter major modes (`bash-ts-mode`, `python-ts-mode`, …) are picked up automatically when the running Emacs has them; the 30.1 ones are skipped on 29.x.
-2.  **Emacs lsp-mode:** This package is an extension for `lsp-mode` (version **10.0.0** or higher), which must be installed and available before `lsp-ltex-plus` can function. 10.0.0 is the highest version that can be declared, but it is not really enough: the package is written against `lsp-mode` commits newer than any release. Install a recent build from MELPA or from master — see [Recommended `lsp-mode` Revision](#recommended-lsp-mode-revision) below.
-3.  **LTeX+ Language Server:** This is the core engine that performs the grammar checks. The recommended version is 18.7+. See [Server Installation](#server-installation) below on how to install it.
-4.  **Java:** LTeX+ requires **Java 21** or higher. Most platform-specific releases of LTeX+ include a bundled Java runtime, so you don't necessarily need to install it separately. See [Java Runtime Configuration](#3-java-runtime-configuration) for details.
-5.  **Operating system:** Linux, macOS, and Windows are fully supported. 
+1.  **Emacs:** Version **29.1** or later. Tree-sitter major modes (`bash-ts-mode`, `python-ts-mode`, …) are picked up automatically when the running Emacs has them; the 30.1 ones are skipped on 29.x.
+2.  **LTeX+ Language Server:** This is the core engine that performs the grammar checks. The recommended version is 18.7+. See [Server Installation](#server-installation) below on how to install it.
+3.  **Java:** LTeX+ requires **Java 21** or higher. Most platform-specific releases of LTeX+ include a bundled Java runtime, so you don't necessarily need to install it separately. See [Java Runtime Configuration](#3-java-runtime-configuration) for details.
+4.  **Operating system:** Linux, macOS, and Windows are fully supported.
 
-### Recommended `lsp-mode` Revision
-
-Five LSP-protocol bugs that this package historically worked around have since been fixed upstream:
-
-| PR | Fix |
-|---|---|
-| [#5052](https://github.com/emacs-lsp/lsp-mode/pull/5052) | Treat bare-array `CompletionItem[]` responses as complete completion lists. |
-| [#5055](https://github.com/emacs-lsp/lsp-mode/pull/5055) | Classify JSON-RPC messages by `method` before `id` (Kind-First routing) — fixes deadlocks on ID collisions between server and client. |
-| [#5056](https://github.com/emacs-lsp/lsp-mode/pull/5056) | Ignore stale callbacks that arrive after a synchronous request has already unwound. |
-| [#5057](https://github.com/emacs-lsp/lsp-mode/pull/5057) | Keep dispatching messages in a batch when an earlier one throws or fails framing. |
-| [#5059](https://github.com/emacs-lsp/lsp-mode/pull/5059) | Preserve empty-object capabilities (e.g. `completionProvider: {}`) under `lsp-use-plists`. |
-
-All five are present on `lsp-mode` master from commit [`0951bf38`](https://github.com/emacs-lsp/lsp-mode/commit/0951bf38) (2026-05-15) onward. Installing a recent `lsp-mode` and **leaving `lsp-ltex-plus-apply-kind-first-patch` out of your config** (it defaults to `nil`) is the recommended setup. As of today the option `lsp-ltex-plus-apply-kind-first-patch` is therefore **deprecated**: setting it to `t` against a recent `lsp-mode` only duplicates upstream fixes (harmless, just redundant), and the option will be removed once the package's `Package-Requires` minimum is bumped past commit `0951bf38`.
-
-That bump cannot happen yet, and not because of anything on this side. `Package-Requires` can only name a released version, and `lsp-mode`'s latest release is **10.0.0** from 2026-04-03 — six weeks *older* than `0951bf38`, with master some 40 commits ahead of it. So the declared minimum of 10.0.0 is simply the highest one expressible; it does not describe what the package actually needs. If you install `lsp-mode` from MELPA (which builds from master) or from git, you already have the fixes and nothing further is required of you.
+No other Emacs package is required. `jsonrpc` and `flymake`, which the client is built on, are part of Emacs.
 
 ## Server Installation
 
@@ -92,7 +75,7 @@ The LTeX+ language server is a standalone program. You can install it anywhere o
 
 ### 1. Download the Server
 
-Download the latest release for your architecture from the [official GitHub releases page](https://github.com/ltex-plus/ltex-ls-plus/releases/latest). 
+Download the latest release for your architecture from the [official GitHub releases page](https://github.com/ltex-plus/ltex-ls-plus/releases/latest).
 
 Choose the file that matches your operating system and CPU architecture:
 
@@ -111,10 +94,10 @@ Once extracted, the package contains:
 
 ### 3. Java Runtime Configuration
 
-LTeX+ is a Java application. By default, the server uses the Java runtime bundled within its own directory. 
+LTeX+ is a Java application. By default, the server uses the Java runtime bundled within its own directory.
 
 - **Recommendation:** Start with the bundled Java runtime. It is guaranteed to be compatible.
-- **Using System Java:** If you already have Java 21+ installed and prefer to use it, you can delete the bundled `jdk-21.x.y/` folder. In this case, ensure your `JAVA_HOME` environment variable points to your system Java or explicitly set the path in Emacs:
+- **Using System Java:** If you already have Java 21+ installed and prefer to use it, you can delete the bundled `jdk-21.x.y/` folder. In this case, ensure your `JAVA_HOME` environment variable points to your system Java or set the path in Emacs; the client passes it to the server's launcher as `JAVA_HOME`:
   ```elisp
   (use-package lsp-ltex-plus
     :custom
@@ -126,7 +109,7 @@ LTeX+ is a Java application. By default, the server uses the Java runtime bundle
 For `lsp-ltex-plus` to work, Emacs must be able to find the `ltex-ls-plus` binary. You have several options:
 
 - **Symlink or Shim (Recommended):** To avoid cluttering your `PATH` with many individual directories, you can create a symlink or a small shim script in a directory that is already in your `PATH` (such as `~/.local/bin/` or `/usr/local/bin/`).
-  
+
   Example (Linux/macOS symlink):
   ```bash
   ln -s /path/to/ltex-ls-plus/bin/ltex-ls-plus ~/.local/bin/ltex-ls-plus
@@ -146,6 +129,12 @@ For `lsp-ltex-plus` to work, Emacs must be able to find the `ltex-ls-plus` binar
   (use-package lsp-ltex-plus
     :custom
     (lsp-ltex-plus-ls-plus-executable "/path/to/ltex-ls-plus/bin/ltex-ls-plus"))
+  ```
+  Or name the directory you unpacked the release into, and the client looks in its `bin/`:
+  ```elisp
+  (use-package lsp-ltex-plus
+    :custom
+    (lsp-ltex-plus-ltex-ls-path "/path/to/ltex-ls-plus"))
   ```
 
 - **Update PATH:** Alternatively, add the `bin/` directory of the extracted server to your system `PATH` (via your shell profile) or your Emacs `exec-path`.
@@ -188,7 +177,7 @@ For Emacs 29, where `use-package` has no `:vc` keyword:
 
 ### Manual Installation
 
-Download `lsp-ltex-plus.el` and `lsp-ltex-plus-bootstrap.el`, place them in your load path, and require the main file:
+Download the seven `lsp-ltex-plus*.el` files — `lsp-ltex-plus-bootstrap.el`, `lsp-ltex-plus-settings.el`, `lsp-ltex-plus-conn.el`, `lsp-ltex-plus-diag.el`, `lsp-ltex-plus-actions.el`, `lsp-ltex-plus-comint.el` and `lsp-ltex-plus.el` — place them in your load path, and require the main file:
 
 ```elisp
 (require 'lsp-ltex-plus)
@@ -215,7 +204,7 @@ The most idiomatic way to use this package is to call `lsp-ltex-plus-enable-for-
 - `language-id` — a **VS Code language identifier**, the string LTeX+ uses to select the correct grammar rules and that the LSP protocol sends in `textDocument/didOpen`. The canonical list is at the [VS Code language identifiers page](https://code.visualstudio.com/docs/languages/identifiers).
 - `programming-p` — `nil` for markup and writing modes (LaTeX, Markdown, Org, …), `t` for programming languages (Python, C, Rust, …). This flag controls whether the mode is checked by default or only when `lsp-ltex-plus-check-programming-languages` is enabled.
 
-The registry serves two purposes: it tells the client which buffers to accept, and it provides the language ID to send over the wire. Both are looked up dynamically at activation time, so changes take effect immediately without restarting the server.
+The registry serves two purposes: it tells the client which buffers to accept, and it provides the language ID to send over the wire. Both are looked up when a buffer is opened on the server, so changes take effect for the next buffer without restarting the server.
 
 `lsp-ltex-plus-enable-for-modes` reads `lsp-ltex-plus-major-modes` to compute the effective set of modes the dispatcher activates on, but its keyword arguments (`:restrict-to`, `:exclude`, `:extend-to`) only control that set — they never modify `lsp-ltex-plus-major-modes` itself. The full registry always stays intact.
 
@@ -284,10 +273,8 @@ For a more robust setup using `use-package` and `straight.el`, you can use the f
   ;; programming languages in lsp-ltex-plus-major-modes.
   (lsp-ltex-plus-check-programming-languages t)
 
-  ;; lsp-ltex-plus-apply-kind-first-patch is deprecated and no longer set
-  ;; in the recommended config — the five upstream lsp-mode fixes it once
-  ;; worked around have been merged. See "Recommended `lsp-mode` Revision"
-  ;; near the top of the README.
+  ;; Send the buffer to the server a little sooner after you stop typing.
+  (lsp-ltex-plus-change-delay 0.3)
 
   :init
   ;; Enable lsp-ltex-plus for all supported major modes. The full package
@@ -308,48 +295,54 @@ For a more robust setup using `use-package` and `straight.el`, you can use the f
 ### Key Settings
 - `lsp-ltex-plus-language`: The language variant to check (e.g., `"en-US"`, `"de-DE"`).
 - `lsp-ltex-plus-additional-rules-enable-picky-rules`: Set to `t` if you want stricter grammar checks (e.g., passive voice detection).
-- `lsp-ltex-plus-apply-kind-first-patch`: **Deprecated.** Defaults to `nil`. The five `lsp-mode` bugs this option once worked around are now fixed upstream — see [Recommended `lsp-mode` Revision](#recommended-lsp-mode-revision). Leave it unset; it will be removed in a future release once the package's `lsp-mode` minimum is bumped.
+- `lsp-ltex-plus-change-delay`: Seconds of quiet after an edit before the buffer is sent for checking (default `0.5`).
+- `lsp-ltex-plus-keymap-prefix`: The prefix the commands are bound under (default `C-c "`); `nil` binds nothing.
 
 For the full list of available settings, see [Customization](#customization).
 
 ## Usage
 
-Once active, LTeX+ works just like any other LSP server:
+Once active, the server's findings appear as flymake diagnostics: underlines in the buffer, the message in the echo area when point is on one, and the usual `M-x flymake-show-buffer-diagnostics` list. Each message ends with the rule's id in brackets, which is what you need when deciding to disable a rule.
 
-- **Diagnostics:** Errors and warnings will be highlighted in your buffer.
-- **Suggestions:** Use your standard `lsp-execute-code-action` (usually `s-l a` or `C-c l a`) to:
-    - Add a word to your global dictionary.
-    - Disable a specific rule you don't like.
-    - Ignore a false positive.
+The commands live under `lsp-ltex-plus-keymap-prefix`, `C-c "` by default:
+
+| Key | Command | What it does |
+| :--- | :--- | :--- |
+| `C-c " a` | `lsp-ltex-plus-code-actions` | Offers what the server suggests for the region, or for the diagnostic at point: replacements, *Add … to dictionary*, *Disable rule*, *Hide false positive*. Pick one to apply it. |
+| `C-c " d` | `lsp-ltex-plus-add-to-dictionary` | Accepts the word at point into the dictionary without a menu. When both a project and the global dictionary are on offer, it still asks which. |
+| `C-c " r` | `lsp-ltex-plus-reload-settings` | Applies a changed setting or a hand-edited word list without restarting anything. |
+| `C-c " l` | `lsp-ltex-plus-list-dictionary` | Shows the words accepted in this buffer, naming the project file where one applies. |
+
+Two more commands are not bound: `lsp-ltex-plus-restart-server`, for a setting the server reads only when it starts, and `lsp-ltex-plus-shutdown-server`, which stops the server and switches the mode off wherever it was on.
+
+Point just after a flagged word still counts as being on it, so you can type a word, notice the underline, and press `C-c " d` without moving.
 
 ### Toggling grammar checking in a buffer
 
 `lsp-ltex-plus-mode` is a standard Emacs minor mode: `M-x lsp-ltex-plus-mode` toggles it on and off in the current buffer. In practice this means:
 
-- **Disable** in a buffer where it auto-activated — for example, while you write a throwaway draft that you don't want flagged. Diagnostics disappear, the `LTeX+` mode-line lighter is removed, and running `M-x lsp-ltex-plus-mode` again re-enables it.
+- **Disable** in a buffer where it auto-activated — for example, while you write a throwaway draft that you don't want flagged. Diagnostics disappear, the `LTeX+` mode-line lighter is removed, and running `M-x lsp-ltex-plus-mode` again re-enables it. The server keeps running for your other buffers.
 - **Enable** in a buffer where automatic activation did not fire — because the major mode was filtered out by `:restrict-to` / `:exclude`, or because it is a programming language and `lsp-ltex-plus-check-programming-languages` is nil. The client starts immediately; you do not need to flip any global variable first.
 
 If the current major mode is not yet in `lsp-ltex-plus-major-modes`, you will be prompted for a [VS Code language identifier](https://code.visualstudio.com/docs/languages/identifiers) (press `RET` to accept the default `"plaintext"`). The mode is then registered and the grammar checker starts immediately. When called from a hook rather than interactively, `"plaintext"` is used silently without prompting.
 
-Deactivation is properly scoped: when the mode is turned off in a buffer where other LSP servers are also active (e.g. `texlab` for LaTeX, `basedpyright` for Python), only the LTeX+ workspace is detached and its diagnostics are cleared; the co-tenant servers keep running untouched. The mode is also re-entrant — toggling it off and on repeatedly in the same buffer works cleanly.
-
-> **Why two tables?**  lsp-mode uses `lsp-language-id-configuration` to decide the language ID string sent over the wire (in `textDocument/didOpen` and similar messages). Most common modes — Markdown, Org, LaTeX, plain text — already have entries there from lsp-mode's built-in defaults, so they work without any extra step. Modes outside that list (e.g. `fundamental-mode`) have no default entry, which is why `lsp-ltex-plus-mode` adds the mode to both `lsp-ltex-plus-major-modes` and `lsp-language-id-configuration` simultaneously.
+Turning the mode off touches only this client: the flymake backend is removed and its underlines cleared, and whatever other language server is checking the buffer keeps doing so. The mode is re-entrant — toggling it off and on repeatedly in the same buffer works cleanly.
 
 ### Checking file-less buffers
 
-lsp-mode's machinery is built around `file://` URIs, so historically only buffers backed by a file on disk could be checked. `lsp-ltex-plus-check-fileless-buffers` (enabled by default) lifts that restriction, so temporary buffers with no associated file — `*scratch*`, capture buffers, quick drafts, and the like — are checked too. Set it to `nil` to restrict spell and grammar checking to only buffers visiting a real file:
+`lsp-ltex-plus-check-fileless-buffers` (enabled by default) lets temporary buffers with no associated file — `*scratch*`, capture buffers, quick drafts, and the like — be checked too. Set it to `nil` to restrict spell and grammar checking to buffers visiting a real file:
 
 ```elisp
 ;; Opt out: only check buffers visiting a real file.
 (setq lsp-ltex-plus-check-fileless-buffers nil)
 ```
 
-While enabled (i.e., with the recommended default), a file-less buffer whose major mode is in the enabled set is checked just like a file buffer, and all such buffers share a single `ltex-ls-plus` process. Nothing is ever written to disk. Checking, suggestions, and diagnostics behave exactly as they do for real files.
+While enabled, a file-less buffer whose major mode is in the enabled set is checked just like a file buffer. The client gives it an identity of its own to be known by on the server; nothing is ever written to disk, and checking, suggestions, and diagnostics behave exactly as they do for real files.
 
 A few details worth knowing:
 
 - **Activation rules are the same as for files.** The buffer's major mode must be in the enabled set, and the programming-language gate still applies. Because `*scratch*` uses `lisp-interaction-mode` (a programming mode), it is auto-checked only when `lsp-ltex-plus-check-programming-languages` is *also* enabled — but an explicit `M-x lsp-ltex-plus-mode` in `*scratch*` always works regardless.
-- **Saving to a file is seamless.** If you later save a checked file-less buffer to a real path (e.g. `C-x C-w`), it is transparently re-checked as a normal file.
+- **Saving to a file is seamless.** If you later save a checked file-less buffer to a real path (e.g. `C-x C-w`), it is closed under its temporary identity and re-checked as a normal file, whether or not the new name changes its major mode.
 
 ### Checking comint input (shells, REPLs, agent shells)
 
@@ -365,21 +358,21 @@ This is useful when you compose prose into a shell — a prompt to an AI agent, 
 A few details worth knowing:
 
 - **The major mode must be in the enabled set.** comint-derived modes are not enabled out of the box, so add the one you use — for example `(lsp-ltex-plus-enable-for-modes :extend-to '((agent-shell-mode "plaintext" nil)))` — or run `M-x lsp-ltex-plus-mode` in the buffer. The programming-language gate still applies to dispatcher-driven activation, but an explicit `M-x lsp-ltex-plus-mode` always works.
-- **The prompt is accounted for.** The input usually shares its line with a prompt (e.g. `OpenCode> `) that is not part of what you typed; diagnostics and corrections are positioned correctly past it.
+- **The prompt is not part of the document.** The input usually shares its line with a prompt (e.g. `OpenCode> `) that you did not type; diagnostics and corrections are positioned past it.
+- **Output is never checked.** While the program is producing output — an agent streaming its reply — nothing is sent at all, so the reply is never checked as if you had typed it.
 - **Multi-line input works.** Errors are flagged and corrections apply across every line of a multi-line entry.
 - **Submitting clears the slate.** Once you send the input, its diagnostics are cleared and checking follows the fresh prompt.
 
-
 ## Customization
 
-`lsp-ltex-plus` supports the full range of customizable parameters provided by the LTeX+ server, alongside unique settings specific to this Emacs client (such as debugging tools). For detailed documentation on the official LTeX+ server settings, visit the [official settings page](https://ltex-plus.github.io/ltex-plus/settings.html). LTeX+ itself is a thin LSP wrapper around the [LanguageTool Java library](https://github.com/languagetool-org/languagetool) (`languagetool-core` + per-language modules), adding document parsers (LaTeX, Markdown, BibTeX, …) and per-language client-scoped settings on top of LT's rule engine.
+`lsp-ltex-plus` supports the full range of customizable parameters provided by the LTeX+ server, alongside settings specific to this Emacs client. For detailed documentation on the official LTeX+ server settings, visit the [official settings page](https://ltex-plus.github.io/ltex-plus/settings.html). LTeX+ itself is a thin LSP wrapper around the [LanguageTool Java library](https://github.com/languagetool-org/languagetool) (`languagetool-core` + per-language modules), adding document parsers (LaTeX, Markdown, BibTeX, …) and per-language client-scoped settings on top of LT's rule engine.
 
 You can configure the parameters using `:custom` in `use-package`:
 
 ```elisp
 (use-package lsp-ltex-plus
   :custom
-  ;; Client-specific: Enable detailed logging for troubleshooting
+  ;; Client-specific: keep the whole exchange with the server for inspection
   (lsp-ltex-plus-debug t)
   ;; Server-specific: Provide a custom path to the LTeX+ root directory
   (lsp-ltex-plus-ltex-ls-path "~/path/to/ltex-ls-plus-18.6.1")
@@ -395,12 +388,14 @@ An empty space means the parameter has no direct counterpart at that layer: typi
 
 | Parameter | When applied | Per project | Description | Official LTeX+ Setting | Counterpart in LT Java Library |
 | :--- | :---: | :---: | :--- | :---: | :---: |
-| `lsp-ltex-plus-ls-plus-executable` | R |  | The name or path of the ltex-ls-plus executable. *Type:* string; *default:* `"ltex-ls-plus"`. | | |
-| `lsp-ltex-plus-require-minimum-server-version` | S |  | When non-nil (the default), stop the server if it reports a version older than 18.7.0, or none at all, and say why. Set to nil to keep using it; the warning still appears. Allowed, but not encouraged — some features will not work. *Type:* boolean; *default:* `t`. | | |
-| `lsp-ltex-plus-debug` | R |  | When non-nil, enable verbose logging and JSON-RPC tracing. *Type:* boolean; *default:* `nil`. | | |
-| `lsp-ltex-plus-major-modes` | S† |  | List of `(major-mode language-id programming-p)` triples driving client activation. *Type:* list; *default:* ~80 entries covering markup and programming modes (defined in `lsp-ltex-plus-bootstrap.el`). | | |
+| `lsp-ltex-plus-ls-plus-executable` | R |  | The name or path of the ltex-ls-plus executable. A bare name is looked for under the `bin` of `lsp-ltex-plus-ltex-ls-path`, then on `exec-path`. *Type:* string; *default:* `"ltex-ls-plus"`. | | |
+| `lsp-ltex-plus-require-minimum-server-version` | R |  | When non-nil (the default), stop the server if it reports a version older than 18.7.0, or none at all, and say why. Set to nil to keep using it; the warning still appears. Allowed, but not encouraged — some features will not work. *Type:* boolean; *default:* `t`. | | |
+| `lsp-ltex-plus-debug` | R |  | When non-nil, log the client's steps to `*lsp-ltex-plus::client*`, keep the whole exchange in the `*ltex-ls-plus events*` buffer rather than a capped tail, and ask the server for its own message trace. *Type:* boolean; *default:* `nil`. | | |
+| `lsp-ltex-plus-major-modes` | A† |  | List of `(major-mode language-id programming-p)` triples driving client activation. *Type:* list; *default:* ~80 entries covering markup and programming modes (defined in `lsp-ltex-plus-bootstrap.el`). | | |
+| `lsp-ltex-plus-keymap-prefix` | L |  | Prefix under which the commands are bound: `a` suggestions, `d` add to dictionary, `r` reload, `l` list dictionary. Changing it through Customize rebinds at once. *Type:* key description or `nil` for no bindings; *default:* `"C-c \""`. | | |
+| `lsp-ltex-plus-change-delay` | L | X | Seconds of quiet after an edit before the buffer is sent to the server. Every edit restarts the wait. *Type:* number; *default:* `0.5`. | | |
 | `lsp-ltex-plus-check-programming-languages` | A | X | When non-nil, enable grammar checking in comments of programming languages (disabled by default, matching LTeX+). *Type:* boolean; *default:* `nil`. | | |
-| `lsp-ltex-plus-check-fileless-buffers` | A | X | When non-nil, also check buffers with no backing file (e.g. `*scratch*`, capture buffers); all such buffers share one `ltex-ls-plus` process. See [Checking file-less buffers](#checking-file-less-buffers). *Type:* boolean; *default:* `t`. | | |
+| `lsp-ltex-plus-check-fileless-buffers` | A | X | When non-nil, also check buffers with no backing file (e.g. `*scratch*`, capture buffers). See [Checking file-less buffers](#checking-file-less-buffers). *Type:* boolean; *default:* `t`. | | |
 | `lsp-ltex-plus-check-comint-input` | A | X | When non-nil, check the active input region of `comint-mode` buffers (shells, REPLs, agent shells) — only what you are currently typing, never the output or earlier input. See [Checking comint input](#checking-comint-input-shells-repls-agent-shells). *Type:* boolean; *default:* `t`. | | |
 | `lsp-ltex-plus-language` | L | X | The language LanguageTool should check against (e.g. `"en-US"`, `"de-DE"`). Valid codes are listed on the [LTeX+ supported-languages page](https://ltex-plus.github.io/ltex-plus/supported-languages.html); `"auto"` attempts language detection (not recommended — no spelling). *Type:* string; *default:* `"en-US"`. | X | X |
 | `lsp-ltex-plus-dictionary` | L | X | Additional words accepted as correctly spelled (language-specific). *Type:* plist; *default:* `nil`. See [External settings](#external-settings) for format and behaviour. | X | |
@@ -422,40 +417,35 @@ An empty space means the parameter has no direct counterpart at that layer: typi
 | `lsp-ltex-plus-lt-server-uri` | L | X | Base URI for the LanguageTool HTTP server. Must be a bare host — the server appends `/v2/check`. *Type:* `nil` for local built-in (default) or a string URI such as `"https://api.languagetoolplus.com"`. | X | |
 | `lsp-ltex-plus-lt-username` | L | X | Username/email for LanguageTool Premium API access. Only relevant when `lsp-ltex-plus-lt-server-uri` is set. *Type:* `nil` or string; *default:* `nil`. | X | X |
 | `lsp-ltex-plus-lt-api-key` | L | X | API key for LanguageTool Premium API access. Only relevant when `lsp-ltex-plus-lt-server-uri` is set. *Type:* `nil` or string; *default:* `nil`. | X | X |
-| `lsp-ltex-plus-ltex-ls-path` | R |  | Path to the root directory of ltex-ls-plus (contains `bin` and `lib` subdirectories). *Type:* `nil` or string; *default:* `nil` (use the executable found on `PATH`). | X | |
+| `lsp-ltex-plus-ltex-ls-path` | R |  | Path to the root directory of ltex-ls-plus (contains `bin` and `lib` subdirectories); its `bin` is searched for the executable. *Type:* `nil` or string; *default:* `nil` (use the executable found on `PATH`). | X | |
 | `lsp-ltex-plus-ltex-ls-log-level` | R |  | Logging level (verbosity) of the ltex-ls-plus server log. *Choices* (descending verbosity): `"severe"`, `"warning"`, `"info"`, `"config"`, `"fine"` (default), `"finer"`, `"finest"`. | X | |
-| `lsp-ltex-plus-java-path` | R |  | Path to an existing Java installation (same value you would use for `JAVA_HOME`). *Type:* `nil` or string; *default:* `nil` (use the bundled JRE). | X | |
+| `lsp-ltex-plus-java-path` | R |  | Path to an existing Java installation (same value you would use for `JAVA_HOME`), passed to the server's launcher as such. *Type:* `nil` or string; *default:* `nil` (use the bundled JRE). | X | |
 | `lsp-ltex-plus-java-initial-heap` | R |  | Initial size of the Java heap in megabytes (`-Xms`). *Type:* integer; *default:* `64`. | X | |
 | `lsp-ltex-plus-java-max-heap` | R |  | Maximum size of the Java heap in megabytes (`-Xmx`). *Type:* integer; *default:* `512`. | X | |
 | `lsp-ltex-plus-sentence-cache-size` | R |  | Size of the LanguageTool `ResultCache` in sentences. The default and recommended value `0` disables the local LanguageTool server's own cache entirely: ltex-ls-plus keeps its own per-paragraph cache (see `lsp-ltex-plus-paragraph-cache-enabled`), which supersedes LanguageTool's caching. Use a positive value to turn it back on, but be aware that for the edit loop this is redundant and only adds CPU and memory overhead with no additional benefit. To restore LanguageTool's caching instead, set this positive and also set `lsp-ltex-plus-paragraph-cache-enabled` to nil. *Type:* integer; *default:* `0`. | X | X |
 | `lsp-ltex-plus-max-request-size` | L | X | Largest amount of text, in characters, sent to LanguageTool in a single request when a run of changed paragraphs is batched together (typically the first, whole-document check). Text exceeding this is split across several requests; an individual paragraph is never split. The default fits within the [per-request character limit](https://languagetool.org/http-api/) of the free remote service; if you use a local server (`lsp-ltex-plus-lt-server-uri` is nil) or have a Premium account, consider raising it to 60000. *Type:* integer; *default:* `20000`. | X | |
 | `lsp-ltex-plus-paragraph-cache-ttl-minutes` | L | X | How long, in minutes, a document's cached results are kept after they stop being used, before a background sweep drops them. The actively edited file always stays warm, and a document's cache is cleared immediately when the file is closed. *Type:* integer; *default:* `30`. | X | |
 | `lsp-ltex-plus-paragraph-cache-enabled` | L | X | Whether ltex-ls-plus reuses cached results for unchanged paragraphs so an edit only re-checks the paragraphs that changed. Set to nil to disable result reuse (not recommended) — every paragraph is re-checked on each pass. Paragraphs are still sliced and batched into requests, just never stored or served from the cache. *Type:* boolean; *default:* `t`. | X | |
-| `lsp-ltex-plus-completion-enabled` | L | X | Controls whether word completion is enabled. Requires an `lsp-mode` build containing [PR #5052](https://github.com/emacs-lsp/lsp-mode/pull/5052) (merged 2026-05-03); see [Recommended `lsp-mode` Revision](#recommended-lsp-mode-revision). *Type:* boolean; *default:* `nil`. | X | |
-| `lsp-ltex-plus-diagnostic-severity` | L | X | Severity of the diagnostics. *Choices:* `"error"`, `"warning"` (default), `"information"`, `"hint"`. | X | |
-| `lsp-ltex-plus-check-frequency` | L | X | Controls when documents should be checked. *Choices:* `"edit"` (default, on every keystroke), `"save"` (on open and save), `"manual"` (explicit commands only). | X | |
+| `lsp-ltex-plus-completion-enabled` | L | X | Whether the server offers word completion. Sent to the server as before, but this client does not yet request completions, so it has no visible effect for now. *Type:* boolean; *default:* `nil`. | X | |
+| `lsp-ltex-plus-diagnostic-severity` | L | X | Severity of the diagnostics; it decides the flymake type the underline gets. *Choices:* `"error"`, `"warning"` (default), `"information"`, `"hint"`. | X | |
+| `lsp-ltex-plus-check-frequency` | L | X | Controls when documents should be checked. *Choices:* `"edit"` (default, after every pause in typing), `"save"` (on open and save), `"manual"` (explicit commands only). | X | |
 | `lsp-ltex-plus-clear-diagnostics-when-closing-file` | L | X | Whether to clear diagnostics when a file is closed. *Type:* boolean; *default:* `t`. | X | |
-| `lsp-ltex-plus-show-progress` | S |  | Show `ltex-ls-plus` progress updates in the mode line (the `⌛` prefix and optional spinner). Set to nil to silence the flicker on every keystroke without affecting progress rendering for other LSP clients. *Type:* boolean; *default:* `t`. | | |
-| `lsp-ltex-plus-apply-kind-first-patch` | S |  | **Deprecated** — see [Recommended `lsp-mode` Revision](#recommended-lsp-mode-revision). Whether to apply the 'Kind-First' routing patch (and four related workarounds) to lsp-mode; all five are now fixed upstream. *Type:* boolean; *default:* `nil`. | | |
-| `lsp-ltex-plus-show-latency` | S |  | When non-nil, echo the server round-trip time after every check. Reports both the cold start (`"Completed initial spell check in N ms."` after `textDocument/didOpen`) and the warm path (`"Completed spell check in N ms."` after each `textDocument/didChange`); see [Measuring Server Latency](#measuring-server-latency). *Type:* boolean; *default:* `nil`. | | |
-| `lsp-ltex-plus-multi-root` | S |  | Register the client as multi-root so a single `ltex-ls-plus` JVM handles all folders in the session. Leave enabled unless you have a specific need to isolate projects — disabling it spawns one JVM per project root, which can balloon memory usage. *Type:* boolean; *default:* `t`. | | |
 
-> **"Per project" legend:** **X** means the setting can be given its own value in one project through a `.dir-locals.el`, which this client honours because it answers the server's configuration requests from the buffer holding the document being checked (see [Project-local settings](#project-local-settings)). A blank means the value is read once — at server start or at client setup — so a project-local value would have nothing to act on.
+> **"Per project" legend:** **X** means the setting can be given its own value in one project through a `.dir-locals.el`, which this client honours because it answers the server's configuration requests from the buffer holding the document being checked (see [Project-local settings](#project-local-settings)). A blank means the value is read once — at server start or when the mode is turned on — so a project-local value would have nothing to act on.
 >
 > **"When applied" legend:**
 >
-> - **L** — *Live*: read by the client at the moment it is needed — on every `workspace/configuration` pull, which the server issues before each diagnostic publish, or (for `lsp-ltex-plus-save-additions-to`) at the moment you accept a suggestion. A plain `setq` is honoured straight away — no manual notification, no restart.
-> - **R** — *Requires server restart*: the server reads the value at JVM init only. Change the variable, then run `M-x lsp-workspace-restart` for it to take effect.
-> - **S** — *Setup-only*: wired once, the first time a supported buffer is opened in the Emacs session — installed via `advice-add` or baked into the client registration. Changing the variable later with `setq` or `customize-set-variable` does not re-apply it on its own; run `M-x lsp-ltex-plus-reload-settings` afterwards. For a setting baked into the registration (`lsp-ltex-plus-multi-root` above all) that reaches only workspaces started afterwards, since a running one holds its own copy — restart the workspace for those.
+> - **L** — *Live*: read by the client at the moment it is needed — on every `workspace/configuration` pull, which the server issues before each check, or (for `lsp-ltex-plus-save-additions-to`) at the moment you accept a suggestion, or (for `lsp-ltex-plus-change-delay`) at each edit. A plain `setq` is honoured straight away — no manual notification, no restart.
+> - **R** — *Requires server restart*: the server reads the value when it starts. Change the variable, then run `M-x lsp-ltex-plus-restart-server` for it to take effect.
 > - **A** — *Activation-time*: read when `lsp-ltex-plus-mode` turns on in a buffer — neither on every check nor once at setup. A buffer already being checked keeps the value it started with; newly opened buffers, and ones where you toggle the mode off and on again, see the new one. No reload or restart is involved. If you changed the value in a `.dir-locals.el`, revert the buffer instead (`M-x revert-buffer`; Emacs 28 and later also bind `C-x x g` to `revert-buffer-quick`): toggling the mode re-reads the variable but not the file it came from.
 >
 > **†** on `lsp-ltex-plus-major-modes` — this is a registry, not a customization knob. It is listed here for reference because the client reads from it, but users should not mutate it directly. To adjust which modes the dispatcher activates on, call `lsp-ltex-plus-enable-for-modes` with its `:restrict-to`, `:exclude`, and `:extend-to` keyword arguments (see [Customizing Supported Modes](#customizing-supported-modes)).
 
-</details>
+Six settings from earlier releases — `lsp-ltex-plus-apply-kind-first-patch`, `lsp-ltex-plus-multi-root`, `lsp-ltex-plus-show-progress`, `lsp-ltex-plus-show-latency`, `lsp-ltex-plus-server-input-log` and `lsp-ltex-plus-server-output-log` — only meant something while the client ran on `lsp-mode`. They are still defined so an old configuration keeps loading, and marked obsolete; see the CHANGELOG for 1.0.0.
 
 ### External settings
 
-Alongside the in-Emacs parameters above, `lsp-ltex-plus` relies on four pieces of **persistent configuration** on disk, which survive across Emacs sessions. Each of them has a defcustom counterpart so you can seed it declaratively from `:custom`. Three of the four (all except `enabled-rules`) also grow at runtime when you accept a suggestion on a flagged diagnostic (`lsp-execute-code-action`, usually `s-l a` or `C-c l a`) — *Add to dictionary*, *Disable rule …*, or *Hide false positive …*.
+Alongside the in-Emacs parameters above, `lsp-ltex-plus` relies on four pieces of **persistent configuration** on disk, which survive across Emacs sessions. Each of them has a defcustom counterpart so you can seed it declaratively from `:custom`. Three of the four (all except `enabled-rules`) also grow at runtime when you accept a suggestion on a flagged diagnostic (`C-c " a`, `lsp-ltex-plus-code-actions`) — *Add to dictionary*, *Disable rule …*, or *Hide false positive …*.
 
 Each file is a per-language plist under `~/.emacs.d/lsp-ltex-plus/`, with language keys (`:en-US`, `:de-DE`, …) mapped to vectors of strings. Settings provided via `:custom` and via the file are kept separate: the defcustom settings are never mutated, and they are never written to disk. The server sees their merge.
 
@@ -468,7 +458,7 @@ Accepting a suggestion updates the relevant file and notifies the server, so the
 | `disabled-rules.eld` | `lsp-ltex-plus-disabled-rules` | yes | LanguageTool |
 | `hidden-false-positives.eld` | `lsp-ltex-plus-hidden-false-positives` | yes | **LTeX+ only** |
 
-The `.eld` extension is the Emacs convention for `prin1`-serialised Lisp data; opening one of these files (from Emacs or your OS file manager) gets `lisp-data-mode` automatically. Earlier versions of `lsp-ltex-plus` wrote the external files by default without an extension; if you upgraded from such an older version, these files will be renamed automatically the first time `lsp-ltex-plus` is loaded — no action required. If you customized the filenames, it is recommended moving the files to use the `.eld` extension.  
+The `.eld` extension is the Emacs convention for `prin1`-serialised Lisp data; opening one of these files (from Emacs or your OS file manager) gets `lisp-data-mode` automatically. Earlier versions of `lsp-ltex-plus` wrote the external files by default without an extension; if you upgraded from such an older version, these files will be renamed automatically the first time `lsp-ltex-plus` is loaded — no action required. If you customized the filenames, it is recommended moving the files to use the `.eld` extension.
 
 #### Format
 
@@ -537,7 +527,7 @@ The files use the same plist format as the global ones, and each is optional: co
 
 **A `.dir-locals.el` edit does not reach buffers you already have open.** Emacs reads that file when it visits a file, so an open buffer keeps whatever was in force when you opened it — however you changed the setting afterwards, and whatever the **When applied** column says. Revert the buffer (`M-x revert-buffer`; Emacs 28 and later also bind `C-x x g` to `revert-buffer-quick`) or simply reopen the file; either re-reads the directory-local values and re-activates the mode. `M-x lsp-ltex-plus-reload-settings` will not do it, since it reloads this package's own state rather than Emacs' view of your project.
 
-**Where new entries go** is `lsp-ltex-plus-save-additions-to`. By default (`either-allowing-user-choice`) each such suggestion appears twice among the quick fixes — *Add 'foo' to project dictionary* beside *Add 'foo' to global dictionary*, and likewise *Disable rule for this project* beside *Disable rule globally*. You pick as you accept, and the entry goes to exactly one of them, never both. If you always want the same one, set `per-project-when-specified` to use the project's file whenever it keeps one for that kind of entry, or `globally-defined` to have a project's list read but only ever hand-edited.
+**Where new entries go** is `lsp-ltex-plus-save-additions-to`. By default (`either-allowing-user-choice`) each such suggestion appears twice in the menu — *Add 'foo' to project dictionary* beside *Add 'foo' to global dictionary*, and likewise *Disable rule for this project* beside *Disable rule globally*. You pick as you accept, and the entry goes to exactly one of them, never both. If you always want the same one, set `per-project-when-specified` to use the project's file whenever it keeps one for that kind of entry, or `globally-defined` to have a project's list read but only ever hand-edited.
 
 None of this applies to a project that keeps no lists of its own: there is nowhere else to write, so every value saves to your own files and no extra suggestion appears.
 
@@ -549,8 +539,8 @@ Two are qualified, for reasons of safety rather than taste. `lsp-ltex-plus-lt-se
 
 #### Inspecting and editing
 
-- `M-x lsp-ltex-plus-list-dictionary` — prints the words in force for the current buffer: the global list (the union of `:custom` and the file contents) with this project's dictionary folded in where it keeps one, naming the project file so an unexpected word can be traced to its source.
-- `M-x lsp-ltex-plus-reload-settings` — the one command for making a configuration change take effect. It re-reads all four files, rebuilds the merged views combining them with your `:custom` values, re-applies the settings marked **S** in the table above, and notifies every running `ltex-ls-plus` workspace so the change takes effect on the next check. Convenient for bulk edits: open any of the four files under `~/.emacs.d/lsp-ltex-plus/` in a buffer, edit entries across one or more languages, save, then run this command. Also the right command to run after changing an `lsp-ltex-plus-*` defcustom in a live session — it pushes the new value to the server without an Emacs restart.
+- `M-x lsp-ltex-plus-list-dictionary` (`C-c " l`) — prints the words in force for the current buffer: the global list (the union of `:custom` and the file contents) with this project's dictionary folded in where it keeps one, naming the project file so an unexpected word can be traced to its source.
+- `M-x lsp-ltex-plus-reload-settings` (`C-c " r`) — the one command for making a configuration change take effect. It re-reads all four files, rebuilds the merged views combining them with your `:custom` values, and tells the running server the configuration changed so it fetches its settings again on the next check. Convenient for bulk edits: open any of the four files under `~/.emacs.d/lsp-ltex-plus/` in a buffer, edit entries across one or more languages, save, then run this command. Also the right command to run after changing an `lsp-ltex-plus-*` defcustom in a live session — it pushes the new value to the server without an Emacs restart. Settings the server reads only when it starts (marked **R** above) need `M-x lsp-ltex-plus-restart-server` instead.
 - The four files are plain Emacs plists. After hand-editing, either run the reload command above or restart Emacs to pick up the change.
 
 #### Pro tip: per-file overrides with magic comments
@@ -570,13 +560,13 @@ All variables mentioned below are standard Emacs customization options. If you u
 
 ### Server Not Found
 
-If Emacs cannot find the `ltex-ls-plus` binary, ensure it is in your system `PATH`. You can verify this within Emacs by evaluating:
+If Emacs cannot find the `ltex-ls-plus` binary, turning the mode on says so and names the setting to fix. Ensure the binary is in your system `PATH`; you can verify this within Emacs by evaluating:
 
 ```elisp
 (executable-find "ltex-ls-plus")
 ```
 
-If it returns `nil`, you must either add the binary's directory to your `PATH` or provide the absolute path to the executable via `lsp-ltex-plus-ls-plus-executable`. See [Server Installation](#4-make-it-discoverable) for details.
+If it returns `nil`, add the binary's directory to your `PATH`, provide the absolute path to the executable via `lsp-ltex-plus-ls-plus-executable`, or name the directory you unpacked the release into in `lsp-ltex-plus-ltex-ls-path`. See [Server Installation](#4-make-it-discoverable) for details.
 
 ### Server Too Old After a Package Update
 
@@ -620,7 +610,7 @@ is still outstanding.
 
 ### Language Not Recognized
 
-**Symptom:** No diagnostics ever appear for a buffer that should be checked. The server's stderr buffer (`*ltex-ls-plus::stderr*`) contains a line of the form:
+**Symptom:** No diagnostics ever appear for a buffer that should be checked. The server's stderr buffer (`*ltex-ls-plus stderr*`) contains a line of the form:
 
 ```
 'fr-FR' is not a recognized language. Leaving LanguageTool uninitialized, checking disabled.
@@ -640,25 +630,13 @@ The **remote LanguageTool server** (when `lsp-ltex-plus-lt-server-uri` points at
 
 **A second subtlety — bare code vs. regional variant.** Where a language is listed **both** with a bare code and one or more regional variants (English, German, Portuguese, Dutch, Catalan), the bare code (`en`, `de`, `pt`, `nl`, `ca-ES`) enables LanguageTool's grammar rules but **no spell-check dictionary** — dictionaries are variant-specific. Pick the variant matching your text (`en-US`, `de-DE`, `pt-BR`, …) to get both grammar *and* spelling. For languages listed only as a bare code (French `"fr"`, Italian `"it"`, Swedish `"sv"`, …), that code already includes the single dictionary LanguageTool ships for that language — there is nothing more specific to choose.
 
-**Fix:** Check `lsp-ltex-plus-language` against the official list and pick a code that appears there verbatim:
+**Fix:** Check `lsp-ltex-plus-language` against the official list and pick a code that appears there verbatim, then `M-x lsp-ltex-plus-restart-server`:
 
 ```elisp
 (use-package lsp-ltex-plus
   :custom
   (lsp-ltex-plus-language "fr"))  ; NOT "fr-FR" — French has no regional variants
 ```
-
-### Communication Stalls — No More Diagnostics
-
-**Symptom:** After a few edits, grammar diagnostics stop updating entirely. The `*lsp-log*` buffer shows no new activity, and the server appears alive but silent.
-
-**Cause:** This is a JSON-RPC ID collision deadlock. LTeX+ sends its own requests to Emacs (e.g., to fetch your configuration) while Emacs is still waiting for a response from the server. When the IDs of these two concurrent messages happen to collide, `lsp-mode`'s default parser misroutes the server's request as a response to a pending client request — causing both sides to wait for each other indefinitely.
-
-This is most likely with a **remote/online server**, where both network latency and the server's own processing time (it is a shared service handling many requests) mean that responses take long enough for message overlaps to become virtually inevitable. It can also occur, though rarely, with the local server.
-
-**Fix:** Update `lsp-mode` to a build that contains the upstream Kind-First routing fix ([PR #5055](https://github.com/emacs-lsp/lsp-mode/pull/5055), merged 2026-05-11). Any commit on or after [`0951bf38`](https://github.com/emacs-lsp/lsp-mode/commit/0951bf38) (2026-05-15) suffices — see [Recommended `lsp-mode` Revision](#recommended-lsp-mode-revision) for the full list of related fixes.
-
-On older `lsp-mode` builds, the legacy fallback is to set `lsp-ltex-plus-apply-kind-first-patch` to `t`, which installs the same routing logic as `:override` advice. This option is now deprecated; prefer upgrading `lsp-mode`.
 
 ### Server Crashes or Memory Issues
 
@@ -679,147 +657,52 @@ If you encounter crashes, try increasing the maximum heap size:
 
 While you can experiment with lower values to save system resources, be aware that setting the memory too low may result in an unstable server and frequent crashes. See [Java Runtime Configuration](#3-java-runtime-configuration) for more context.
 
+When the server dies, the mode is switched off in every buffer it was checking and a message says so; turning the mode on again in any buffer starts a new server.
+
 ### Slow Server Response / High CPU Usage
 
-If diagnostics take a long time to appear or if Emacs feels sluggish when `lsp-ltex-plus` is active, it is often due to general LSP performance overhead rather than the grammar checker itself.
+If diagnostics take a long time to appear, the first thing to look at is `lsp-ltex-plus-change-delay`: nothing is sent until you have stopped typing for that long. The `*ltex-ls-plus events*` buffer carries a timestamp on every message, so the time between a `didChange` going out and the `publishDiagnostics` coming back is the server's own share.
 
-1. **Run `M-x lsp-doctor`**: This command performs an automated health check of your LSP setup and provides environment-specific recommendations.
-2. **Consult the Performance Guide**: The official [lsp-mode performance page](https://emacs-lsp.github.io/lsp-mode/page/performance/) contains exhaustive advice on tuning Emacs for LSP. Two high-impact settings frequently recommended for LSP performance are:
-  - **Increase Garbage Collection Threshold**: Emacs' default is very low. Increasing it reduces the frequency of GC pauses during heavy JSON-RPC traffic:
-    ```elisp
-    (setq gc-cons-threshold 100000000) ; 100 MB
-    ```
-  - **Use Plists for JSON**: Switching `lsp-mode` from hash tables to property lists can yield significant speedups on modern Emacs versions:
-    ```elisp
-    (setq lsp-use-plists t)
-    ```
-    However, this setting also requires `LSP_USE_PLISTS=true` when `lsp-mode` is byte-compiled; see the official instructions.
-
-### Startup Delay After Closing Buffers
-
-**Symptom:** Opening a supported buffer is noticeably slow — grammar checking only kicks in after several seconds, and this happens repeatedly, not just on the first buffer opened after starting Emacs.
-
-**Possible explanation:** `ltex-ls-plus` runs on the JVM and reloads the LanguageTool model at startup, so a cold start takes non-trivial time. This happens when `lsp-keep-workspace-alive` is set to `nil`: `lsp-mode` will shut down the server process when the last buffer attached to it is killed; the next supported buffer you open will have to wait through another cold start.
-
-**Fix:** Ensure `lsp-keep-workspace-alive` is left at its default value of `t`:
+If Emacs itself feels sluggish while the mode is active, increasing the garbage collection threshold reduces the frequency of GC pauses during JSON traffic:
 
 ```elisp
-(setq lsp-keep-workspace-alive t)
+(setq gc-cons-threshold 100000000) ; 100 MB
 ```
 
-This keeps the workspace (and the server process) alive even when no buffers are currently attached, so later buffers reuse the warm server and diagnostics appear nearly instantaneously.
+### Startup Delay When Opening the First Buffer
 
-Note that this setting only matters when the **last** buffer using `ltex-ls-plus` is killed. As long as at least one supported buffer remains open, the server is still in active use and will not be shut down regardless of this setting.
+**Symptom:** The first supported buffer you open in a session is noticeably slow to get its diagnostics — several seconds — and afterwards everything is instant.
 
-### High Memory Use with Many Loose Files
-
-**Symptom:** After opening several supported files from unrelated directories, you notice multiple `java` / `ltex-ls-plus` processes running, each claiming several hundred megabytes of RAM. Memory use scales roughly linearly with the number of distinct directories you have touched in the session. You can check from a terminal:
-
-```bash
-pgrep -afl 'ltex-ls-plus|ltex.ls.plus'
-```
-
-**Possible explanation:** `lsp-ltex-plus-multi-root` may have been set to `nil` somewhere in your configuration. When this variable is `nil`, each distinct project root (the git repo for files inside one, or the file's own directory for loose files) gets its own dedicated server process. With the default (`t`), a single server handles every supported buffer in the session regardless of where the files live.
-
-**Fix:** confirm that `lsp-ltex-plus-multi-root` is at its default value of `t`:
-
-```elisp
-(setq lsp-ltex-plus-multi-root t)
-```
-
-Unless you have a specific need to isolate projects (e.g., you are experimenting with per-project dictionaries or rule sets and want to keep them from bleeding across projects), leave this enabled. With it set to `t`, a single `ltex-ls-plus` process handles every supported buffer in the session regardless of how many unrelated directories those buffers come from.
+**Explanation:** `ltex-ls-plus` runs on the JVM and loads the LanguageTool model at startup, so a cold start takes non-trivial time. One server serves every buffer in the session and stays up until you stop it with `M-x lsp-ltex-plus-shutdown-server` or Emacs exits, so the cold start happens once. If it happens repeatedly, something is stopping the server — look at `*ltex-ls-plus stderr*` and the `*Messages*` buffer for the reason it went away.
 
 ### No Grammar Checking in Scratch or Anonymous Buffers
 
 File-less buffers are checked by default — see [Checking file-less buffers](#checking-file-less-buffers). If one isn't being checked, verify that `lsp-ltex-plus-check-fileless-buffers` is non-nil (the default) and that the buffer's major mode is in the enabled set. Note that `*scratch*` uses `lisp-interaction-mode` (a programming mode), so it is auto-checked only when `lsp-ltex-plus-check-programming-languages` is also enabled; an explicit `M-x lsp-ltex-plus-mode` always works.
 
-### Word Completion Not Working with `lsp-ltex-plus-completion-enabled`
+### Word Completion
 
-**Symptom:** You set `lsp-ltex-plus-completion-enabled t` (or invoke completion explicitly with `M-x completion-at-point` / your usual completion key) in a buffer where `lsp-ltex-plus-mode` is active, but no LTeX+ word suggestions appear.
-
-**Cause:** Word completion depends on `lsp-mode`'s **buffer-wide** `lsp-completion-enable` variable, which is shared across every LSP client active in the buffer. Setting `lsp-ltex-plus-completion-enabled t` only tells LTeX+ to advertise completion to the server; the actual `textDocument/completion` requests are sent only when `lsp-completion-enable` is also non-nil. If you have set `lsp-completion-enable nil` globally — for example because you find LSP-driven completion noisy in code buffers — LTeX+ completion will be silently suppressed alongside everything else.
-
-**Fix (option 1, recommended for most users):** leave `lsp-completion-enable` at its default of `t`. This is the natural setting for LSP-driven autocompletion in code buffers, and LTeX+ will work alongside other servers without further intervention.
-
-**Fix (option 2, for users who prefer global completion off):** enable `lsp-completion-enable` only in buffers where `lsp-ltex-plus-mode` is active. The cleanest way is a small mode hook:
-
-```elisp
-(defun my/lsp-ltex-plus-buffer-defaults ()
-  "Buffer-local LSP settings for LTeX+."
-  (setq-local lsp-completion-enable lsp-ltex-plus-completion-enabled))
-
-(add-hook 'lsp-ltex-plus-mode-hook #'my/lsp-ltex-plus-buffer-defaults)
-```
-
-This pattern lets `lsp-ltex-plus-completion-enabled` act as a per-buffer override of your global preference: turn it on, and the buffer gets LSP completion (which, in a buffer where LTeX+ is the only client, means LTeX+ word completion).
-
-**Caveat for option 2.** Because the hook copies `lsp-ltex-plus-completion-enabled` into the buffer-wide `lsp-completion-enable`, it has side effects on **every** LSP client in the same buffer. If you later set `lsp-ltex-plus-completion-enabled nil`, the hook will *also* disable completion for any co-tenant servers (e.g. `basedpyright` or `texlab` running in the same buffer because LTeX+ is enabled for code comments). If you flip the variable off, remove or amend the hook accordingly to avoid surprising other clients.
+`lsp-ltex-plus-completion-enabled` is sent to the server as before, but this client does not request completions: the word completion earlier releases offered came from `lsp-mode`'s completion machinery, which the client no longer uses. If you relied on it, please say so in an issue.
 
 ## Under the Hood
 
 This section is for users who want to understand how `lsp-ltex-plus` works internally — useful context if you hit an unexpected issue or simply want to know what is happening behind the scenes.
 
-### Measuring Server Latency
+### Watching the wire
 
-If you want to evaluate how fast `ltex-ls-plus` responds on your machine — for example, to compare the local backend against a remote LanguageTool service — enable `lsp-ltex-plus-show-latency`:
+Every message between Emacs and `ltex-ls-plus` is recorded, with a timestamp, in the `*ltex-ls-plus events*` buffer that `jsonrpc` keeps for the connection. By default it holds the last couple of megabytes, enough for a bug report; under `lsp-ltex-plus-debug` it is unbounded, the client's own steps are logged to `*lsp-ltex-plus::client*`, and the server is asked for its own message trace (`lsp-ltex-plus-trace-server`). The server's standard error — its Java log — is in `*ltex-ls-plus stderr*`.
 
-```elisp
-(use-package lsp-ltex-plus
-  :custom
-  (lsp-ltex-plus-show-latency t))
-```
-
-Two distinct events are reported with different wording so the two regimes can be distinguished at a glance:
-
-| Event | Triggered by | Message |
-| :--- | :--- | :--- |
-| **Cold start** | `textDocument/didOpen` (first time the buffer is shown to the server) | `Completed initial spell check in N ms.` |
-| **Warm path** | `textDocument/didChange` (every edit, debounced) | `Completed spell check in N ms.` |
-
-The cold-start figure reflects a full first-pass check of the entire document. The warm-path figure reflects incremental re-checks served partly from the server's sentence cache. Reporting both lets you quote numbers such as *"first open: X ms, incremental edit: Y ms."*
-
-On a modern laptop with the local backend, incremental edits typically land in around **~60 ms** for short Org / Markdown buffers and **~120 ms** for long LaTeX documents. The cold-start figure is always noticeably higher — the server has to parse the full document from scratch and prime its caches before the first diagnostics come back.
-
-A remote LanguageTool server typically adds 100–300 ms on top of both numbers, depending on network latency and how busy the service is.
-
-> **Important — what the numbers do _not_ include.** Each measurement stops the instant diagnostics *arrive*. It does **not** cover the subsequent rendering step inside Emacs: `lsp-mode`'s diagnostic dispatch, `flycheck` / `flymake` overlay refresh, and any `lsp-ui-sideline` redraw. On typical configurations that rendering path adds several hundred milliseconds on top and is the **dominant contributor to perceived responsiveness** — not the grammar checker itself.
->
-> So if the experience feels laggy even though `ltex-ls-plus` reports a small number, the bottleneck is in the UI layer above LSP, not in the grammar checker below it. Tuning `lsp-idle-delay`, `flycheck-idle-change-delay`, and `lsp-ui-sideline-delay` usually helps more than replacing the checker with a faster one.
-
-Because the warm-path message fires after every check (i.e. on essentially every keystroke when `lsp-ltex-plus-check-frequency` is `"edit"` and the debounce interval is small), it is intended for investigation only. Turn the flag off again when you are done measuring. For richer diagnostic output — including entries in the `*lsp-ltex-plus::client*` log buffer and raw JSON-RPC dumps in the system temp directory (see `lsp-ltex-plus-server-input-log` and `lsp-ltex-plus-server-output-log`) — see `lsp-ltex-plus-debug` instead; the two flags are independent and can be combined.
-
-### Lsp-mode Protocol Patches
-
-> **Deprecated as of 2026-05-15.** All three patches described below have been merged into `lsp-mode` upstream (alongside two related fixes); see [Recommended `lsp-mode` Revision](#recommended-lsp-mode-revision). The `lsp-ltex-plus-apply-kind-first-patch` toggle is now a no-op against any sufficiently recent `lsp-mode` and will be removed once the package's `lsp-mode` minimum is bumped. This section is preserved as a technical reference for users on older `lsp-mode` builds and for the historical record.
-
-This package includes several surgical fixes for `lsp-mode` to improve protocol robustness. They are applied globally when `lsp-ltex-plus-apply-kind-first-patch` is non-nil.
-
-1.  **Kind-First Routing (Fix for Communication Stalls)**: Standard `lsp-mode` routes messages by checking the `id` field first. LTeX+ frequently initiates its own requests (e.g., to fetch your configuration), which can overlap with Emacs's own requests (like checking a document). In such cases, an "id collision" can occur where `lsp-mode` misinterprets the server's new request as a response to its own pending check, causing both sides to hang indefinitely. This patch analyzes the message format (presence of a `method` field) to distinguish with certainty between requests and responses. **Highly recommended if you use a remote server and necessary for `lsp-ltex-plus` to  correctly function.**
-
-2.  **Resilient Message Dispatch (Fix for Lost Updates)**: Often, the server sends several updates bundled together (for example, a progress update followed immediately by diagnostics). In standard `lsp-mode`, if processing one update is interrupted—such as when you start typing while a completion list is being shown—all other updates in that same bundle are accidentally discarded. This patch ensures that every message in a bundle is processed, even if one of them is interrupted. This patch is highly recommended for the functioning of this package.
-
-3.  **Stale Callback Protection**: Prevents synchronous requests from throwing `lsp-done` after they have already timed out or been cancelled. Without this, a late response to a cancelled request could escape its local scope and throw a mysterious error to the top level.
-
-To enable these patches, add this to your `:custom` block:
-
-```elisp
-(use-package lsp-ltex-plus
-  :custom
-  (lsp-ltex-plus-apply-kind-first-patch t))
-```
-
-*Note: As these are protocol-level improvements, enabling them generally improves the stability and reliability of **all** your other LSP clients as well.*
+A check as it appears there: a `textDocument/didChange` goes out with the whole text; the server sends back a `workspace/configuration` request and an `ltex/workspaceSpecificConfiguration` request, both tagged with the document's URI, and the client answers each from that document's buffer; then `textDocument/publishDiagnostics` arrives, and flymake draws it.
 
 ### How does `lsp-ltex-plus-mode` get set up and activated?
 
-The package is split into two files with different load-time profiles:
+The package is split into a tiny bootstrap file and the client proper:
 
-- **`lsp-ltex-plus-bootstrap.el`** — tiny, no dependencies. Loaded at `:init` time. Defines the major-mode alist and exposes two autoloaded entry points.
-- **`lsp-ltex-plus.el`** — the full client. Loaded lazily, only when a relevant buffer is first opened.
+- **`lsp-ltex-plus-bootstrap.el`** — tiny, no dependencies. Loaded at `:init` time. Defines the major-mode alist and exposes the autoloaded entry point.
+- **`lsp-ltex-plus.el`** and the files it requires — the settings, the connection, the flymake backend, the code actions, the comint region. Loaded lazily, only when a relevant buffer is first opened.
 
 #### Setup: what happens at startup
 
-When the package manager builds `lsp-ltex-plus`, it scans both files for `;;;###autoload` cookies and writes a single autoloads file. This registers lightweight stubs for two symbols — `lsp-ltex-plus-enable-for-modes` and `lsp-ltex-plus-mode` — very early at startup, before any `use-package` form is evaluated. Neither file is loaded yet.
+When the package manager builds `lsp-ltex-plus`, it scans the files for `;;;###autoload` cookies and writes a single autoloads file. This registers lightweight stubs for `lsp-ltex-plus-enable-for-modes`, `lsp-ltex-plus-mode` and the commands very early at startup, before any `use-package` form is evaluated. No file is loaded yet.
 
 When `use-package` evaluates the `:init` block and calls `(lsp-ltex-plus-enable-for-modes)`, it hits that stub, which loads `lsp-ltex-plus-bootstrap.el` (the tiny file only). The full package is **not** loaded. The function stores the effective set of enabled modes in `lsp-ltex-plus--enabled-modes` and adds a single dispatcher, `lsp-ltex-plus--maybe-activate`, to `after-change-major-mode-hook`.
 
@@ -831,18 +714,18 @@ User opens foo.md
       → lsp-ltex-plus--maybe-activate runs
           → (memq 'markdown-mode lsp-ltex-plus--enabled-modes) → non-nil
           → lsp-ltex-plus-mode called ← hits its autoload stub
-              → lsp-ltex-plus.el loads for the first time
-                  → (require 'lsp-ltex-plus-bootstrap) → already loaded, no-op
-                  → (with-eval-after-load 'lsp-mode ...) registered
-              → lsp-ltex-plus-mode body runs → (lsp) called
-                  → lsp-mode.el loads → (provide 'lsp-mode) fires
-                      → lsp-ltex-plus--setup runs ← client registered
-                  → lsp-mode finds ltex-ls-plus, activates it
+              → lsp-ltex-plus.el and the files it requires load
+                  → the four word lists are read from disk
+              → lsp-ltex-plus-mode body runs
+                  → the flymake backend is added and flymake-mode turned on
+                  → the buffer asks for the session's server
+                      → none yet: ltex-ls-plus is started, initialize sent
+                  → once initialized: configuration pushed, didOpen sent
+                  → the server checks, pulls the buffer's settings, publishes
+                  → flymake shows the diagnostics
 ```
 
-The crucial detail is that `with-eval-after-load` fires **synchronously inside the `require` call**, at the exact moment `lsp-mode.el` evaluates `(provide 'lsp-mode)`. By the time `(lsp)` returns, the client is already registered. There is no race condition.
-
-Thus, with `with-eval-after-load`, we ensure the correct load orders, while no special configuration is required from the user.
+Every later buffer, from any project, reuses the same server: it is simply opened on it.
 
 #### Why a single dispatcher?
 
@@ -864,7 +747,9 @@ Two Emacs LSP clients for LTeX already existed before this package:
 
 > **Note on the name collision.** The overlap with `emacs-languagetool/lsp-ltex-plus` is unintentional — I was not aware of that project when I chose the name for this one. The two packages are independent; they simply converged on the same label.
 
-The motivation for writing a new client was practical: on my setup the existing client reliably stalled after a handful of edits — the server stopped publishing diagnostics and a workspace restart was needed to recover. Tracing that symptom led to the JSON-RPC ID-collision issue documented in [Lsp-mode Protocol Patch](#lsp-mode-protocol-patch), and from there to a from-scratch implementation designed specifically for `ltex-ls-plus`. Rebuilding the communication chain — starting with direct command-line interrogation of the server — made it possible to understand exactly how the server and client interact. The result is a lightweight client built around `ltex-ls-plus`'s actual behaviour (bi-directional server-initiated requests, full document sync, server-pulled configuration) rather than inheriting a design tuned for the older `ltex-ls`.
+The motivation for writing a new client was practical: on my setup the existing client reliably stalled after a handful of edits — the server stopped publishing diagnostics and a workspace restart was needed to recover. Tracing that symptom led to a JSON-RPC id-collision bug in the message router the existing clients relied on, and from there to a from-scratch implementation designed specifically for `ltex-ls-plus`. Rebuilding the communication chain — starting with direct command-line interrogation of the server — made it possible to understand exactly how the server and client interact. The result is a lightweight client built around `ltex-ls-plus`'s actual behaviour (bi-directional server-initiated requests, full document sync, server-pulled configuration) rather than inheriting a design tuned for the older `ltex-ls`.
+
+Until version 1.0 this client ran on `lsp-mode`, and much of its code existed to patch or work around that framework. Since 1.0 it speaks the protocol itself, over the `jsonrpc` library bundled with Emacs, and depends on nothing else; the `lsp-` prefix in the name is historical.
 
 If you want to dig deeper:
 
