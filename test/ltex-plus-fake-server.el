@@ -204,12 +204,12 @@ DIAGNOSTICS is a vector; VERSION, when non-nil, is included."
   "Wrap the connection PROC in a server-side jsonrpc connection on EVENT."
   (when (string-match-p "\\`open" event)
     (setq ltex-plus-fake-peer
-          (make-instance 'jsonrpc-process-connection
-                         :name "ltex-plus-fake"
-                         :process proc
-                         :request-dispatcher #'ltex-plus-fake--handle-request
-                         :notification-dispatcher #'ltex-plus-fake--handle-notification
-                         :events-buffer-config '(:size 0)))))
+          (apply #'make-instance 'jsonrpc-process-connection
+                 :name "ltex-plus-fake"
+                 :process proc
+                 :request-dispatcher #'ltex-plus-fake--handle-request
+                 :notification-dispatcher #'ltex-plus-fake--handle-notification
+                 (lsp-ltex-plus--events-buffer-initargs 0)))))
 
 (defun ltex-plus-fake-start ()
   "Start the fake listening on a loopback port, and return that port.

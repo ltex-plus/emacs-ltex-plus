@@ -202,13 +202,26 @@ connection called NAME, which is how the two end up coupled."
                   :noquery t
                   :stderr (get-buffer-create (format "*%s stderr*" name)))))
 
-(defun lsp-ltex-plus--events-buffer-config ()
-  "Return the `jsonrpc' events buffer configuration for a new connection.
+(defun lsp-ltex-plus--events-buffer-initargs (size)
+  "Return the initargs that cap a connection's events buffer at SIZE bytes.
+SIZE nil means unbounded and 0 means no events buffer at all.  jsonrpc
+1.0.19, bundled from Emacs 30, configures the buffer through
+`:events-buffer-config'; the jsonrpc bundled with Emacs 29 knows only
+`:events-buffer-scrollback-size', and refuses the newer initarg as an
+invalid slot.  The class is probed for the newer slot rather than the
+library for a version, since the library does not say which it is."
+  (if (memq '-events-buffer-config
+            (mapcar #'eieio-slot-descriptor-name
+                    (eieio-class-slots 'jsonrpc-connection)))
+      (list :events-buffer-config (list :size size :format 'full))
+    (list :events-buffer-scrollback-size size)))
+
+(defun lsp-ltex-plus--events-buffer-size ()
+  "Return the size to keep the events buffer at for a new connection.
 The events buffer is the record of everything that went over the wire.
 It is unbounded under `lsp-ltex-plus-debug' and otherwise kept to a
 size that still holds a useful tail for a bug report."
-  (list :size (if lsp-ltex-plus-debug nil 2000000)
-        :format 'full))
+  (if lsp-ltex-plus-debug nil 2000000))
 
 (defconst lsp-ltex-plus--client-capabilities
   '(:workspace (:applyEdit :json-false
@@ -260,15 +273,16 @@ later, on its own, and turns the connection READY.  Sets
 `lsp-ltex-plus--connection'."
   (let* ((name "ltex-ls-plus")
          (command (lsp-ltex-plus--server-command))
-         (conn (make-instance
-                'lsp-ltex-plus-connection
-                :name name
-                :root root
-                :process (lambda () (lsp-ltex-plus--make-process name command root))
-                :request-dispatcher #'lsp-ltex-plus--handle-request
-                :notification-dispatcher #'lsp-ltex-plus--handle-notification
-                :on-shutdown #'lsp-ltex-plus--on-shutdown
-                :events-buffer-config (lsp-ltex-plus--events-buffer-config))))
+         (conn (apply #'make-instance
+                      'lsp-ltex-plus-connection
+                      :name name
+                      :root root
+                      :process (lambda () (lsp-ltex-plus--make-process name command root))
+                      :request-dispatcher #'lsp-ltex-plus--handle-request
+                      :notification-dispatcher #'lsp-ltex-plus--handle-notification
+                      :on-shutdown #'lsp-ltex-plus--on-shutdown
+                      (lsp-ltex-plus--events-buffer-initargs
+                       (lsp-ltex-plus--events-buffer-size)))))
     (unless lsp-ltex-plus--start-time
       (setq lsp-ltex-plus--start-time (current-time)))
     (setq lsp-ltex-plus--connection conn)

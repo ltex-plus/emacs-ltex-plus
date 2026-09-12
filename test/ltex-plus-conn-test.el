@@ -137,6 +137,22 @@ user who unpacked a release somewhere expects it to do here."
 
 ;;;; -- Session state ----------------------------------------------------------
 
+(ert-deftest ltex-plus-conn-test-events-buffer-initargs-suit-this-jsonrpc ()
+  "The events buffer is configured with an initarg this jsonrpc accepts.
+Emacs 29's jsonrpc refuses `:events-buffer-config' as an invalid slot;
+Emacs 30's deprecates the older initarg with a warning.  Whichever this
+Emacs has, a connection can be made with what the probe chose."
+  (let* ((initargs (lsp-ltex-plus--events-buffer-initargs 0))
+         (conn (apply #'make-instance 'jsonrpc-process-connection
+                      :name "ltex-plus-probe"
+                      :process (lambda ()
+                                 (make-pipe-process :name "ltex-plus-probe" :noquery t))
+                      initargs)))
+    (unwind-protect
+        (should (memq (car initargs)
+                      '(:events-buffer-config :events-buffer-scrollback-size)))
+      (delete-process (jsonrpc--process conn)))))
+
 (ert-deftest ltex-plus-conn-test-no-connection-is-not-live ()
   "With nothing started there is no live connection to reuse."
   (let ((lsp-ltex-plus--connection nil))
