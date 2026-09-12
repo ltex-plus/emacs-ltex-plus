@@ -1248,5 +1248,53 @@ folded in on top of the global ones."
         :enabledRules         (lsp-ltex-plus--obj-or-empty (lsp-ltex-plus--effective-plist 'enabled-rules))
         :hiddenFalsePositives (lsp-ltex-plus--obj-or-empty (lsp-ltex-plus--effective-plist 'hidden-false-positives))))
 
+(defun lsp-ltex-plus--settings-object ()
+  "Return the `ltex' settings object, read in the current buffer.
+The nested object the server expects under the `ltex' section, built
+straight from the defcustoms so that a buffer-local or directory-local
+value is what goes out when this is called in the document's buffer.
+
+Every JSON type is made explicit at this boundary: an unset string is
+sent as \"\", a boolean as true or false rather than null, and an empty
+object as `{}'.  The four language-keyed lists go through
+`lsp-ltex-plus--effective-plist', the same way as in
+`lsp-ltex-plus--workspace-specific-entry', so the two replies can never
+disagree about a project's lists."
+  (list :enabled (vconcat (lsp-ltex-plus--enabled-languages))
+        :language lsp-ltex-plus-language
+        :dictionary (lsp-ltex-plus--obj-or-empty (lsp-ltex-plus--effective-plist 'dictionary))
+        :enabledRules (lsp-ltex-plus--obj-or-empty (lsp-ltex-plus--effective-plist 'enabled-rules))
+        :disabledRules (lsp-ltex-plus--obj-or-empty (lsp-ltex-plus--effective-plist 'disabled-rules))
+        :hiddenFalsePositives (lsp-ltex-plus--obj-or-empty
+                               (lsp-ltex-plus--effective-plist 'hidden-false-positives))
+        :bibtex (list :fields (lsp-ltex-plus--obj-or-empty lsp-ltex-plus-bibtex-fields))
+        :latex (list :commands (lsp-ltex-plus--obj-or-empty lsp-ltex-plus-latex-commands)
+                     :environments (lsp-ltex-plus--obj-or-empty lsp-ltex-plus-latex-environments))
+        :markdown (list :nodes (lsp-ltex-plus--obj-or-empty lsp-ltex-plus-markdown-nodes))
+        :additionalRules (list :enablePickyRules (lsp-ltex-plus--bool
+                                                  lsp-ltex-plus-additional-rules-enable-picky-rules)
+                               :motherTongue (lsp-ltex-plus--str
+                                              lsp-ltex-plus-additional-rules-mother-tongue)
+                               :languageModel (lsp-ltex-plus--str
+                                               lsp-ltex-plus-additional-rules-language-model))
+        :languageToolHttpServerUri (lsp-ltex-plus--str lsp-ltex-plus-lt-server-uri)
+        :languageToolOrg (list :username (lsp-ltex-plus--str lsp-ltex-plus-lt-username))
+        :ltex-ls (list :languageToolOrgApiKey (lsp-ltex-plus--str lsp-ltex-plus-lt-api-key)
+                       :path (lsp-ltex-plus--str lsp-ltex-plus-ltex-ls-path)
+                       :logLevel lsp-ltex-plus-ltex-ls-log-level)
+        :java (list :path (lsp-ltex-plus--str lsp-ltex-plus-java-path)
+                    :initialHeapSize lsp-ltex-plus-java-initial-heap
+                    :maximumHeapSize lsp-ltex-plus-java-max-heap)
+        :sentenceCacheSize lsp-ltex-plus-sentence-cache-size
+        :maxRequestSize lsp-ltex-plus-max-request-size
+        :paragraphCacheTtlMinutes lsp-ltex-plus-paragraph-cache-ttl-minutes
+        :paragraphCacheEnabled (lsp-ltex-plus--bool lsp-ltex-plus-paragraph-cache-enabled)
+        :completionEnabled (lsp-ltex-plus--bool lsp-ltex-plus-completion-enabled)
+        :diagnosticSeverity lsp-ltex-plus-diagnostic-severity
+        :checkFrequency lsp-ltex-plus-check-frequency
+        :clearDiagnosticsWhenClosingFile (lsp-ltex-plus--bool
+                                          lsp-ltex-plus-clear-diagnostics-when-closing-file)
+        :trace (list :server lsp-ltex-plus-trace-server)))
+
 (provide 'lsp-ltex-plus-settings)
 ;;; lsp-ltex-plus-settings.el ends here

@@ -158,19 +158,21 @@ Emacs process happens to be sitting in."
                      (lsp-ltex-plus--effective-plist 'enabled-rules))
                    lsp-ltex-plus--enabled-rules-merged))))
 
-;;;; -- The reply to the server ---------------------------------------------------
+;;;; -- Both replies agree -----------------------------------------------------
 
-(ert-deftest ltex-plus-project-test-the-custom-reply-merges-both-lists ()
-  "The entry sent for `ltex/workspaceSpecificConfiguration' merges both lists.
-It goes through `lsp-ltex-plus--effective-plist', as the standard
-`workspace/configuration' reply must too; the server prefers the custom
-one, so a divergence between them would be invisible until someone
-turned the custom capability off."
+(ert-deftest ltex-plus-project-test-both-replies-see-the-same-lists ()
+  "The custom reply and the standard one cannot disagree.
+Both go through `lsp-ltex-plus--effective-plist'.  The server prefers
+the custom one, so a divergence would be invisible until someone turned
+the custom capability off."
   (ltex-plus-project-test--in-project
     (with-current-buffer top
       (should (equal (ltex-plus-test-words
                       (plist-get (lsp-ltex-plus--workspace-specific-entry)
                                  :dictionary))
+                     '("everywhere" "Wittgenstein")))
+      (should (equal (ltex-plus-test-words
+                      (plist-get (lsp-ltex-plus--settings-object) :dictionary))
                      '("everywhere" "Wittgenstein"))))))
 
 ;;;; -- The modification-time cache --------------------------------------------

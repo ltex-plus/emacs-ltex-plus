@@ -261,5 +261,81 @@ Renaming would silently discard whichever file lost."
       (should (equal (ltex-plus-test-words (ltex-plus-test-read-file new))
                      '("new"))))))
 
+;;;; -- The settings object ----------------------------------------------------
+
+(defconst ltex-plus-settings-test--documented-keys
+  '("additionalRules.enablePickyRules" "additionalRules.languageModel"
+    "additionalRules.motherTongue" "bibtex.fields" "checkFrequency"
+    "clearDiagnosticsWhenClosingFile" "completionEnabled" "diagnosticSeverity"
+    "dictionary" "disabledRules" "enabled" "enabledRules" "hiddenFalsePositives"
+    "java.initialHeapSize" "java.maximumHeapSize" "java.path"
+    "languageToolHttpServerUri" "languageToolOrg.username" "language"
+    "latex.commands" "latex.environments" "ltex-ls.languageToolOrgApiKey"
+    "ltex-ls.logLevel" "ltex-ls.path" "markdown.nodes" "maxRequestSize"
+    "paragraphCacheEnabled" "paragraphCacheTtlMinutes" "sentenceCacheSize"
+    "trace.server")
+  "Every `ltex.*' setting the client sends, in the server's dotted spelling.
+The list the README documents; a key added to the object without being
+added here is one nobody wrote down.")
+
+(defun ltex-plus-settings-test--keys (object)
+  "Return the dotted leaf paths of the nested settings OBJECT, sorted.
+The four language-keyed lists are leaves: their plists are keyed by
+language, not by setting, and look nested only by accident."
+  (let (keys)
+    (cl-labels ((walk (prefix plist)
+                  (while plist
+                    (let* ((key (substring (symbol-name (pop plist)) 1))
+                           (value (pop plist))
+                           (path (if prefix (concat prefix "." key) key)))
+                      (if (and value (listp value) (keywordp (car value))
+                               (not (member key '("dictionary" "enabledRules"
+                                                  "disabledRules"
+                                                  "hiddenFalsePositives"))))
+                          (walk path value)
+                        (push path keys))))))
+      (walk nil object))
+    (sort keys #'string<)))
+
+(ert-deftest ltex-plus-settings-test-the-object-carries-every-documented-key ()
+  "The settings object has exactly the keys the README documents."
+  (ltex-plus-test-reset)
+  (should (equal (ltex-plus-settings-test--keys (lsp-ltex-plus--settings-object))
+                 (sort (copy-sequence ltex-plus-settings-test--documented-keys)
+                       #'string<))))
+
+(ert-deftest ltex-plus-settings-test-unset-values-have-their-json-type ()
+  "Nil never reaches the wire where the server expects a string or a boolean.
+An unset string goes out as \"\", a false boolean as false, and an empty
+list-valued setting as an empty object, never as null."
+  (ltex-plus-test-reset)
+  (let ((lsp-ltex-plus-lt-server-uri nil)
+        (lsp-ltex-plus-java-path nil)
+        (lsp-ltex-plus-completion-enabled nil)
+        (lsp-ltex-plus-bibtex-fields nil))
+    (let ((object (lsp-ltex-plus--settings-object)))
+      (should (equal (plist-get object :languageToolHttpServerUri) ""))
+      (should (equal (plist-get (plist-get object :java) :path) ""))
+      (should (eq (plist-get object :completionEnabled) :json-false))
+      (should (hash-table-p (plist-get (plist-get object :bibtex) :fields)))
+      (should (hash-table-p (plist-get object :dictionary))))))
+
+(ert-deftest ltex-plus-settings-test-the-object-is-read-in-the-current-buffer ()
+  "A buffer-local value is what goes out when the object is built there.
+This is what lets a `.dir-locals.el' decide a document's language: the
+handler builds the object in the document's own buffer."
+  (with-temp-buffer
+    (setq-local lsp-ltex-plus-language "de-DE")
+    (should (equal (plist-get (lsp-ltex-plus--settings-object) :language) "de-DE")))
+  (with-temp-buffer
+    (should (equal (plist-get (lsp-ltex-plus--settings-object) :language)
+                   (default-value 'lsp-ltex-plus-language)))))
+
+(ert-deftest ltex-plus-settings-test-enabled-lists-every-language-once ()
+  "`enabled' is the set of language ids the mode table knows, as a vector."
+  (let ((enabled (plist-get (lsp-ltex-plus--settings-object) :enabled)))
+    (should (vectorp enabled))
+    (should (equal (append enabled nil) (lsp-ltex-plus--enabled-languages)))))
+
 (provide 'ltex-plus-settings-test)
 ;;; ltex-plus-settings-test.el ends here
