@@ -351,6 +351,128 @@ ended regardless."
       (ignore-errors (jsonrpc-notify conn 'exit nil)))
     (jsonrpc-shutdown conn)))
 
+;;;; -- Documents ---------------------------------------------------------------
+
+;; The server knows a document by its URI; this table is the only place
+;; that maps a URI back to the buffer holding it.  Owning the table is
+;; what makes every later lookup exact: the buffer the server asks about
+;; is the one that opened the document, found by the very URI it was
+;; opened under, with no file name resolution in between.
+
+(defvar lsp-ltex-plus--documents (make-hash-table :test #'equal)
+  "Map from document URI to the buffer that opened it on the server.")
+
+(defvar-local lsp-ltex-plus--document-uri nil
+  "The URI this buffer is open under on the server, or nil.")
+
+(defvar-local lsp-ltex-plus--document-version 0
+  "The version of this buffer's document last sent to the server.
+Incremented on every `didChange', as the protocol requires.")
+
+(defun lsp-ltex-plus--language-id (&optional buffer)
+  "Return the LSP language id for BUFFER (default the current buffer).
+Read from `lsp-ltex-plus-major-modes'; a mode not listed there is sent
+as plain text, which the server checks as prose."
+  (or (cadr (assq (buffer-local-value 'major-mode (or buffer (current-buffer)))
+                  lsp-ltex-plus-major-modes))
+      "plaintext"))
+
+(defun lsp-ltex-plus--buffer-uri (&optional buffer)
+  "Return the URI BUFFER (default the current buffer) has or would have.
+The URI it is already open under if it is; otherwise the `file://' URI
+of the file it visits.  A buffer visiting no file has no URI yet."
+  (with-current-buffer (or buffer (current-buffer))
+    (or lsp-ltex-plus--document-uri
+        (and buffer-file-name
+             (lsp-ltex-plus--path-to-uri buffer-file-name)))))
+
+(defun lsp-ltex-plus--buffer-for-uri (uri)
+  "Return the live buffer open under URI, or nil.
+Nil means one thing: the buffer was killed after the server last heard
+of it."
+  (when-let* ((buffer (and uri (gethash uri lsp-ltex-plus--documents))))
+    (and (buffer-live-p buffer) buffer)))
+
+(defun lsp-ltex-plus--document-text (&optional buffer)
+  "Return the text of BUFFER (default the current buffer) as the server sees it.
+The whole buffer, narrowing notwithstanding: the server holds the full
+document and positions are relative to its start."
+  (with-current-buffer (or buffer (current-buffer))
+    (save-restriction
+      (widen)
+      (buffer-substring-no-properties (point-min) (point-max)))))
+
+(defun lsp-ltex-plus--document-open-p (&optional buffer)
+  "Return non-nil if BUFFER (default the current buffer) is open on the server."
+  (and (buffer-local-value 'lsp-ltex-plus--document-uri (or buffer (current-buffer)))
+       t))
+
+(defun lsp-ltex-plus--open-document (&optional buffer)
+  "Open BUFFER (default the current buffer) on the server, starting it if needed.
+The `didOpen' goes out once the handshake is complete, which may be
+later; until then the buffer is not yet in the table.  Opening a buffer
+that is already open does nothing."
+  (let ((buffer (or buffer (current-buffer))))
+    (unless (lsp-ltex-plus--document-open-p buffer)
+      (let ((conn (lsp-ltex-plus--ensure-connection)))
+        (lsp-ltex-plus--when-ready
+         conn
+         (lambda ()
+           (when (and (buffer-live-p buffer)
+                      (not (lsp-ltex-plus--document-open-p buffer)))
+             (lsp-ltex-plus--send-did-open conn buffer))))))))
+
+(defun lsp-ltex-plus--send-did-open (conn buffer)
+  "Register BUFFER on CONN and send its `didOpen'."
+  (with-current-buffer buffer
+    (let ((uri (lsp-ltex-plus--buffer-uri buffer)))
+      (unless uri
+        (error "[lsp-ltex-plus] Buffer %s has no file and cannot be opened yet"
+               (buffer-name buffer)))
+      (setq lsp-ltex-plus--document-uri uri
+            lsp-ltex-plus--document-version 1)
+      (puthash uri buffer lsp-ltex-plus--documents)
+      (add-hook 'kill-buffer-hook #'lsp-ltex-plus--close-document nil t)
+      (lsp-ltex-plus--log "didOpen %s as %s" (buffer-name buffer) (lsp-ltex-plus--language-id))
+      (jsonrpc-notify conn 'textDocument/didOpen
+                      (list :textDocument
+                            (list :uri uri
+                                  :languageId (lsp-ltex-plus--language-id)
+                                  :version lsp-ltex-plus--document-version
+                                  :text (lsp-ltex-plus--document-text)))))))
+
+(defun lsp-ltex-plus--close-document (&optional buffer)
+  "Close BUFFER (default the current buffer) on the server and forget it.
+Safe to call on a buffer that is not open.  The `didClose' is sent only
+while the server is still running; after it has gone there is nobody to
+tell."
+  (let ((buffer (or buffer (current-buffer))))
+    (when-let* ((uri (buffer-local-value 'lsp-ltex-plus--document-uri buffer)))
+      (with-current-buffer buffer
+        (remhash uri lsp-ltex-plus--documents)
+        (setq lsp-ltex-plus--document-uri nil
+              lsp-ltex-plus--document-version 0)
+        (remove-hook 'kill-buffer-hook #'lsp-ltex-plus--close-document t)
+        (when-let* ((conn (lsp-ltex-plus--live-connection)))
+          (lsp-ltex-plus--log "didClose %s" (buffer-name buffer))
+          (jsonrpc-notify conn 'textDocument/didClose
+                          (list :textDocument (list :uri uri))))))))
+
+(defun lsp-ltex-plus--forget-documents (_conn)
+  "Drop every document from the table once the server is gone.
+On `lsp-ltex-plus--after-shutdown-functions'.  The buffers stay as they
+are; a new server will be told about them when they next need one."
+  (maphash (lambda (_uri buffer)
+             (when (buffer-live-p buffer)
+               (with-current-buffer buffer
+                 (setq lsp-ltex-plus--document-uri nil
+                       lsp-ltex-plus--document-version 0)
+                 (remove-hook 'kill-buffer-hook #'lsp-ltex-plus--close-document t))))
+           lsp-ltex-plus--documents)
+  (clrhash lsp-ltex-plus--documents))
+
+(add-hook 'lsp-ltex-plus--after-shutdown-functions #'lsp-ltex-plus--forget-documents)
+
 ;;;; -- What the server sends --------------------------------------------------
 
 ;; Both dispatchers receive the method as an interned symbol.  Requests the

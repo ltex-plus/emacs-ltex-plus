@@ -246,5 +246,102 @@ client is broken rather than merely limited."
         (ltex-plus-fake-wait-for (lambda () shown)))
       (should (equal shown '("[ltex-ls-plus] Hello from the server"))))))
 
+;;;; -- Documents ---------------------------------------------------------------
+
+(defmacro ltex-plus-conn-test--with-open-file (var contents &rest body)
+  "Run BODY with VAR bound to a buffer visiting a `.rst' file of CONTENTS.
+The buffer is in `rst-mode', a built-in mode the table maps to
+\"restructuredtext\", so the language id is one the real server would
+receive.  Not `.tex': visiting one runs `latexenc' coding detection,
+which fails in a batch Emacs."
+  (declare (indent 2) (debug (symbolp form body)))
+  `(ltex-plus-test-with-project (list (cons "note.rst" ,contents))
+     (let ((,var (ltex-plus-test-visit (project-file "note.rst"))))
+       (with-current-buffer ,var (rst-mode))
+       ,@body)))
+
+(ert-deftest ltex-plus-conn-test-opening-sends-the-document ()
+  "`didOpen' carries the URI, the language id, version 1 and the whole text."
+  (ltex-plus-fake-with-connection
+    (ltex-plus-conn-test--with-open-file buffer "Hello teh world.\n"
+      (lsp-ltex-plus--open-document buffer)
+      (ltex-plus-fake-wait-for (lambda () (ltex-plus-fake-received 'textDocument/didOpen)))
+      (let* ((sent (plist-get (car (ltex-plus-fake-received 'textDocument/didOpen))
+                              :textDocument))
+             (uri (plist-get sent :uri)))
+        (should (equal uri (lsp-ltex-plus--path-to-uri (buffer-file-name buffer))))
+        (should (equal (plist-get sent :languageId) "restructuredtext"))
+        (should (= 1 (plist-get sent :version)))
+        (should (equal (plist-get sent :text) "Hello teh world.\n"))
+        (should (eq (lsp-ltex-plus--buffer-for-uri uri) buffer))
+        (should (lsp-ltex-plus--document-open-p buffer))))))
+
+(ert-deftest ltex-plus-conn-test-opening-waits-for-the-handshake ()
+  "A buffer opened while the server starts is sent after `initialized'."
+  (ltex-plus-fake-with-connection
+    (ltex-plus-conn-test--with-open-file buffer "Text.\n"
+      (lsp-ltex-plus--open-document buffer)
+      (should-not (lsp-ltex-plus--document-open-p buffer))
+      (ltex-plus-fake-wait-for (lambda () (ltex-plus-fake-received 'textDocument/didOpen)))
+      (should (equal (mapcar #'car (reverse ltex-plus-fake-received))
+                     '(initialize initialized textDocument/didOpen))))))
+
+(ert-deftest ltex-plus-conn-test-opening-twice-sends-once ()
+  "A second open of the same buffer is a no-op."
+  (ltex-plus-fake-with-connection
+    (ltex-plus-conn-test--with-open-file buffer "Text.\n"
+      (lsp-ltex-plus--open-document buffer)
+      (lsp-ltex-plus--open-document buffer)
+      (ltex-plus-fake-wait-for (lambda () (ltex-plus-fake-received 'textDocument/didOpen)))
+      (lsp-ltex-plus--open-document buffer)
+      (accept-process-output nil 0.2)
+      (should (= 1 (length (ltex-plus-fake-received 'textDocument/didOpen)))))))
+
+(ert-deftest ltex-plus-conn-test-killing-the-buffer-closes-the-document ()
+  "Killing an open buffer sends `didClose' and drops it from the table."
+  (ltex-plus-fake-with-connection
+    (ltex-plus-conn-test--with-open-file buffer "Text.\n"
+      (lsp-ltex-plus--open-document buffer)
+      (ltex-plus-fake-wait-for (lambda () (ltex-plus-fake-received 'textDocument/didOpen)))
+      (let ((uri (lsp-ltex-plus--buffer-uri buffer)))
+        (kill-buffer buffer)
+        (ltex-plus-fake-wait-for (lambda () (ltex-plus-fake-received 'textDocument/didClose)))
+        (should (equal (plist-get (plist-get (car (ltex-plus-fake-received
+                                                   'textDocument/didClose))
+                                             :textDocument)
+                                  :uri)
+                       uri))
+        (should-not (lsp-ltex-plus--buffer-for-uri uri))))))
+
+(ert-deftest ltex-plus-conn-test-closing-an-unopened-buffer-is-harmless ()
+  "Closing a buffer the server never heard of sends nothing."
+  (ltex-plus-fake-with-connection
+    (ltex-plus-fake-ready-connection)
+    (with-temp-buffer
+      (lsp-ltex-plus--close-document)
+      (accept-process-output nil 0.1)
+      (should-not (ltex-plus-fake-received 'textDocument/didClose)))))
+
+(ert-deftest ltex-plus-conn-test-a-dead-server-forgets-its-documents ()
+  "When the process ends, no buffer is left believing it is open."
+  (ltex-plus-fake-with-connection
+    (ltex-plus-conn-test--with-open-file buffer "Text.\n"
+      (lsp-ltex-plus--open-document buffer)
+      (ltex-plus-fake-wait-for (lambda () (ltex-plus-fake-received 'textDocument/didOpen)))
+      (let ((conn lsp-ltex-plus--connection))
+        (ltex-plus-fake-stop)
+        (ltex-plus-fake-wait-for (lambda () (not (jsonrpc-running-p conn)))))
+      (should-not (lsp-ltex-plus--document-open-p buffer))
+      (should (zerop (hash-table-count lsp-ltex-plus--documents))))))
+
+(ert-deftest ltex-plus-conn-test-language-id-comes-from-the-table ()
+  "A listed mode sends its id; an unlisted one is sent as plain text."
+  (with-temp-buffer
+    (latex-mode)
+    (should (equal (lsp-ltex-plus--language-id) "latex")))
+  (with-temp-buffer
+    (fundamental-mode)
+    (should (equal (lsp-ltex-plus--language-id) "plaintext"))))
+
 (provide 'ltex-plus-conn-test)
 ;;; ltex-plus-conn-test.el ends here
