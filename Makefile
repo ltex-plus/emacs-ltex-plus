@@ -4,7 +4,7 @@
 #   make test       run the ERT suite (test/); live tests skip
 #   make test-live  the same, with the tests that need a real ltex-ls-plus
 #   make live-repl  a daemon with the live fixture loaded, for debugging
-#   make compile    byte-compile the two package files, warnings and all
+#   make compile    byte-compile the package files, warnings and all
 #   make checkdoc   docstring conventions
 #   make lint       package-lint, as MELPA runs it
 #   make check      all of the above
@@ -21,7 +21,7 @@
 #   test/run-tests.sh -s "\"project-file\""
 
 EMACS ?= emacs
-PACKAGE_FILES := lsp-ltex-plus-bootstrap.el lsp-ltex-plus.el
+PACKAGE_FILES := lsp-ltex-plus-bootstrap.el lsp-ltex-plus-settings.el lsp-ltex-plus.el
 
 # Every multi-line `--eval' below is built as a variable, never written
 # inline in a recipe.  Make collapses a backslash-newline in a variable

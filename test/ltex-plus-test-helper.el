@@ -130,7 +130,7 @@ working directory and from any clone.")
 
 (add-to-list 'load-path ltex-plus-test-repo-root)
 
-;; Load the two package files by explicit path, with an explicit `.el' and
+;; Load the package files by explicit path, with an explicit `.el' and
 ;; NOSUFFIX set, rather than through `require'.  Two things would otherwise
 ;; decide for us which code the suite tests, and neither announces itself:
 ;;
@@ -149,7 +149,8 @@ working directory and from any clone.")
 
 (defconst ltex-plus-test-package-files
   (mapcar (lambda (name) (expand-file-name name ltex-plus-test-repo-root))
-          '("lsp-ltex-plus-bootstrap.el" "lsp-ltex-plus.el"))
+          '("lsp-ltex-plus-bootstrap.el" "lsp-ltex-plus-settings.el"
+            "lsp-ltex-plus.el"))
   "The package sources this suite tests, in load order.")
 
 (dolist (file ltex-plus-test-package-files)
