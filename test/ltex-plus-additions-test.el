@@ -1,0 +1,223 @@
+;;; ltex-plus-additions-test.el --- Where an accepted suggestion goes -*- lexical-binding: t; -*-
+
+;; This Source Code Form is subject to the terms of the Mozilla Public
+;; License, v. 2.0. If a copy of the MPL was not distributed with this
+;; file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+;;; Commentary:
+
+;; Reading always merges the global and project lists; writing picks one
+;; of them, and `lsp-ltex-plus-save-additions-to' is the choice.  These
+;; tests accept suggestions shaped like the server's and look at which
+;; file the entries landed in.  No server is running, so the push that
+;; ends every handler finds nobody to push to and does nothing.
+
+;;; Code:
+
+(require 'ltex-plus-test-helper)
+
+(defconst ltex-plus-additions-test--spec
+  '((".dir-locals.el"
+     . "((nil . ((lsp-ltex-plus-project-dictionary-file
+                  . \".ltex/dictionary.eld\"))))")
+    ("doc.rst" . "text\n"))
+  "A project keeping its own dictionary -- and no rules or false-positives file.
+The asymmetry is deliberate: it is what lets one fixture cover both
+\"the project has a file for this kind\" and \"it does not\".")
+
+(defmacro ltex-plus-additions-test--in-project (&rest body)
+  "Run BODY with empty lists, a project buffer, and its dictionary path.
+`buffer' visits a file in a project keeping its own dictionary,
+`outside' one in a tree keeping nothing, and `project-dictionary' is the
+path of the former's file.  Every list starts empty, so anything found
+afterwards was written by the test itself."
+  (declare (indent 0) (debug t))
+  `(progn
+     (ltex-plus-test-reset)
+     (ltex-plus-test-with-project ltex-plus-additions-test--spec
+       (let ((outside-root (file-name-as-directory
+                            (make-temp-file "ltex-plus-test-outside-" t))))
+         (unwind-protect
+             (progn
+               (ltex-plus-test-write-file
+                (expand-file-name "doc.rst" outside-root) "text\n")
+               (let ((buffer (ltex-plus-test-visit
+                              (expand-file-name "doc.rst" ltex-plus-test-root)))
+                     (outside (ltex-plus-test-visit
+                               (expand-file-name "doc.rst" outside-root)))
+                     (project-dictionary
+                      (expand-file-name ".ltex/dictionary.eld"
+                                        ltex-plus-test-root)))
+                 (ignore buffer outside project-dictionary)
+                 ,@body))
+           (delete-directory outside-root t))))))
+
+(defun ltex-plus-additions-test--global-words (&optional kind)
+  "Return the words written to KIND's global file, default `dictionary'."
+  (ltex-plus-test-words
+   (ltex-plus-test-read-file (ltex-plus-test-global-file (or kind 'dictionary)))))
+
+;;;; -- The three values of the setting ----------------------------------------
+
+(ert-deftest ltex-plus-additions-test-default-is-to-ask ()
+  "The shipped default offers the choice rather than deciding.
+Either other value silences the offer permanently, so a user who set up
+a project dictionary would never learn the choice exists."
+  (should (eq (default-value 'lsp-ltex-plus-save-additions-to)
+              'either-allowing-user-choice)))
+
+(ert-deftest ltex-plus-additions-test-per-project-prefers-the-project-file ()
+  "`per-project-when-specified' writes to the project's own file."
+  (ltex-plus-additions-test--in-project
+    (let ((lsp-ltex-plus-save-additions-to 'per-project-when-specified))
+      (with-current-buffer buffer
+        (ltex-plus-test-accept
+         (ltex-plus-test-suggestion "_ltex.addToDictionary" "Add 'Kripke'"
+                                    :words '("Kripke")))))
+    (should (equal (ltex-plus-test-words
+                    (ltex-plus-test-read-file project-dictionary))
+                   '("Kripke")))
+    (should-not (ltex-plus-additions-test--global-words))))
+
+(ert-deftest ltex-plus-additions-test-per-project-falls-back-to-global ()
+  "With no project file of that kind the addition still lands somewhere.
+A suggestion must never be a dead end -- in a scratch buffer above all,
+where there is no project to write to at all."
+  (ltex-plus-additions-test--in-project
+    (let ((lsp-ltex-plus-save-additions-to 'per-project-when-specified))
+      (with-current-buffer outside
+        (ltex-plus-test-accept
+         (ltex-plus-test-suggestion "_ltex.addToDictionary" "Add 'Quine'"
+                                    :words '("Quine")))))
+    (should (equal (ltex-plus-additions-test--global-words) '("Quine")))
+    (should-not (ltex-plus-test-read-file project-dictionary))))
+
+(ert-deftest ltex-plus-additions-test-per-project-falls-back-per-kind ()
+  "The fallback is decided per kind, not per project.
+This project keeps a dictionary but no rules file, so a disabled rule
+goes global while a word would not."
+  (ltex-plus-additions-test--in-project
+    (let ((lsp-ltex-plus-save-additions-to 'per-project-when-specified))
+      (with-current-buffer buffer
+        (ltex-plus-test-accept
+         (ltex-plus-test-suggestion "_ltex.disableRules" "Disable"
+                                    :ruleIds '("EN_QUOTES")))))
+    (should (equal (ltex-plus-additions-test--global-words 'disabled-rules)
+                   '("EN_QUOTES")))))
+
+(ert-deftest ltex-plus-additions-test-globally-defined-ignores-the-project ()
+  "`globally-defined' writes to the user's own file even in a project.
+Choose it to have a project's list read but only ever edited by hand."
+  (ltex-plus-additions-test--in-project
+    (let ((lsp-ltex-plus-save-additions-to 'globally-defined))
+      (with-current-buffer buffer
+        (ltex-plus-test-accept
+         (ltex-plus-test-suggestion "_ltex.addToDictionary" "Add 'Frege'"
+                                    :words '("Frege")))))
+    (should (equal (ltex-plus-additions-test--global-words) '("Frege")))
+    (should-not (ltex-plus-test-read-file project-dictionary))))
+
+(ert-deftest ltex-plus-additions-test-project-write-is-visible-at-once ()
+  "The next check sees the new word without waiting on a timestamp.
+The project branch refreshes the cache entry itself; a whole-second
+modification-time granularity would otherwise hide the write."
+  (ltex-plus-additions-test--in-project
+    (let ((lsp-ltex-plus-save-additions-to 'per-project-when-specified))
+      (with-current-buffer buffer
+        (ltex-plus-test-accept
+         (ltex-plus-test-suggestion "_ltex.addToDictionary" "Add 'Tarski'"
+                                    :words '("Tarski")))
+        (should (equal (ltex-plus-test-words
+                        (lsp-ltex-plus--effective-plist 'dictionary))
+                       '("Tarski")))))))
+
+(ert-deftest ltex-plus-additions-test-all-three-kinds-are-routed ()
+  "Each of the three suggestion commands writes to its own list."
+  (ltex-plus-additions-test--in-project
+    (let ((lsp-ltex-plus-save-additions-to 'globally-defined))
+      (with-current-buffer buffer
+        (ltex-plus-test-accept
+         (ltex-plus-test-suggestion "_ltex.addToDictionary" "Add"
+                                    :words '("Godel")))
+        (ltex-plus-test-accept
+         (ltex-plus-test-suggestion "_ltex.disableRules" "Disable"
+                                    :ruleIds '("EN_QUOTES")))
+        (ltex-plus-test-accept
+         (ltex-plus-test-suggestion "_ltex.hideFalsePositives" "Hide"
+                                    :falsePositives '("{\"rule\":\"X\"}")))))
+    (should (equal (ltex-plus-additions-test--global-words) '("Godel")))
+    (should (equal (ltex-plus-additions-test--global-words 'disabled-rules)
+                   '("EN_QUOTES")))
+    (should (equal (ltex-plus-additions-test--global-words 'hidden-false-positives)
+                   '("{\"rule\":\"X\"}")))))
+
+(ert-deftest ltex-plus-additions-test-malformed-arguments-are-reported ()
+  "An action carrying nothing usable is reported, not raised.
+The arguments come from the server; a shape change upstream should
+produce a message, not a backtrace in the middle of the user's editing."
+  (ltex-plus-additions-test--in-project
+    (with-current-buffer buffer
+      (let ((inhibit-message t))
+        (lsp-ltex-plus--action-add-to-dictionary
+         '(:command "_ltex.addToDictionary" :arguments [nil]))
+        (lsp-ltex-plus--action-add-to-dictionary
+         '(:command "_ltex.addToDictionary"))))
+    (should-not (ltex-plus-additions-test--global-words))
+    (should-not (ltex-plus-test-read-file project-dictionary))))
+
+(ert-deftest ltex-plus-additions-test-every-language-in-one-action-is-saved ()
+  "An action carrying several languages writes an entry for each."
+  (ltex-plus-additions-test--in-project
+    (let ((lsp-ltex-plus-save-additions-to 'globally-defined))
+      (with-current-buffer buffer
+        (ltex-plus-test-accept
+         '(:title "Add"
+           :command (:command "_ltex.addToDictionary"
+                     :arguments [(:uri "file:///test/doc.rst"
+                                  :words (:en-US ["English"] :de-DE ["Deutsch"]))])))))
+    (let ((saved (ltex-plus-test-read-file (ltex-plus-test-global-file 'dictionary))))
+      (should (equal (ltex-plus-test-words saved) '("English")))
+      (should (equal (ltex-plus-test-words saved :de-DE) '("Deutsch"))))))
+
+(ert-deftest ltex-plus-additions-test-an-unknown-command-is-reported ()
+  "A command this client does not carry out is reported, not raised."
+  (let ((said nil))
+    (cl-letf (((symbol-function 'message)
+               (lambda (fmt &rest args) (setq said (apply #'format fmt args)))))
+      (lsp-ltex-plus--run-action '(:title "Odd" :command (:command "java.organizeImports"))))
+    (should (string-match-p "java.organizeImports" said))))
+
+;;;; -- The marker -------------------------------------------------------------
+
+(ert-deftest ltex-plus-additions-test-marker-overrides-the-setting ()
+  "A variant says where it saves, whatever the setting would have chosen.
+The user picked that entry; the setting has already had its say by
+producing two of them."
+  (ltex-plus-additions-test--in-project
+    (with-current-buffer buffer
+      (let ((tagged (list :command "_ltex.addToDictionary"
+                          lsp-ltex-plus--target-marker "project"))
+            (lsp-ltex-plus-save-additions-to 'globally-defined))
+        (should (eq (lsp-ltex-plus--addition-target 'dictionary tagged)
+                    'project))))))
+
+(ert-deftest ltex-plus-additions-test-target-is-global-without-a-project ()
+  "With no project file the target is global, marker or not."
+  (ltex-plus-additions-test--in-project
+    (with-current-buffer outside
+      (let ((tagged (list :command "_ltex.addToDictionary"
+                          lsp-ltex-plus--target-marker "project")))
+        (should (eq (lsp-ltex-plus--addition-target 'dictionary tagged) 'global))
+        (should (eq (lsp-ltex-plus--addition-target 'dictionary nil) 'global))))))
+
+(ert-deftest ltex-plus-additions-test-unsplit-suggestion-saves-globally ()
+  "Under the default, an unmarked suggestion keeps the conservative file.
+It reaches the handler unsplit only if it came from somewhere other than
+`lsp-ltex-plus--split-suggestion'."
+  (ltex-plus-additions-test--in-project
+    (with-current-buffer buffer
+      (let ((lsp-ltex-plus-save-additions-to 'either-allowing-user-choice))
+        (should (eq (lsp-ltex-plus--addition-target 'dictionary nil) 'global))))))
+
+(provide 'ltex-plus-additions-test)
+;;; ltex-plus-additions-test.el ends here

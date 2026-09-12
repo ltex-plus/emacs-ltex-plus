@@ -92,6 +92,30 @@ such a test in this to assert on what a user actually gets."
   `(let ((debug-on-error nil))
      ,@body))
 
+;;;; -- Suggestions shaped like the server's ------------------------------------
+
+(defun ltex-plus-test-suggestion (command title key entries &optional language)
+  "Build a code action shaped like the ones ltex-ls-plus sends.
+COMMAND is the server command id, TITLE the server's own localised
+title, KEY the argument key carrying the entries (`:words', `:ruleIds'
+or `:falsePositives') and ENTRIES a list of strings, filed under
+LANGUAGE (default `:en-US')."
+  (list :title title
+        :kind (concat "quickfix.ltex." (substring command 6))
+        :command (list :title title
+                       :command command
+                       :arguments (vector (list :uri "file:///test/doc.rst"
+                                                key (list (or language :en-US)
+                                                          (vconcat entries)))))))
+
+(defun ltex-plus-test-accept (action)
+  "Carry ACTION out as the menu would after the user chose it."
+  (lsp-ltex-plus--run-action action))
+
+(defun ltex-plus-test-titles (actions)
+  "Return the `:title' of each action in ACTIONS, as a list."
+  (mapcar (lambda (action) (plist-get action :title)) (append actions nil)))
+
 ;;;; -- Reading the language-keyed plists --------------------------------------
 
 (defun ltex-plus-test-words (plist &optional language)

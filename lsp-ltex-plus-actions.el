@@ -157,5 +157,78 @@ be sent.  Returns the number of documents edited."
       (lsp-ltex-plus--apply-text-edits (lsp-ltex-plus--edit-buffer uri) edits))
     (length documents)))
 
+;;;; -- The three commands handled here ------------------------------------------
+
+;; Adding a word, disabling a rule and hiding a false positive arrive as
+;; commands, but the server never expects to receive them back: they are
+;; the client's to carry out, by writing to one of the four lists and
+;; telling the server its configuration changed so that it pulls the lists
+;; again.  The three differ only in which list they write to and which key
+;; the server used to carry the entries, so they share one body.  Each
+;; entry is routed by `lsp-ltex-plus--save-addition', which decides between
+;; the global and the project file; the command is passed along because a
+;; suggestion split in two by `either-allowing-user-choice' carries the
+;; answer on itself.
+
+(defun lsp-ltex-plus--handle-addition-action (command kind argument-key label)
+  "Add the entries COMMAND carries under ARGUMENT-KEY to KIND's list.
+COMMAND is the protocol's command object; its first argument holds a
+map from language code to entries under ARGUMENT-KEY.  LABEL names the
+action in log and error messages.  Malformed arguments are reported,
+not raised: they come from the server, and a shape change upstream
+should produce a message rather than a backtrace mid-edit."
+  (lsp-ltex-plus--log "Action: %s (saving to the %s file)"
+                      label (lsp-ltex-plus--addition-target kind command))
+  (let* ((args (plist-get command :arguments))
+         (arg0 (and (vectorp args) (> (length args) 0) (aref args 0)))
+         (by-language (and arg0 (plist-get arg0 argument-key))))
+    (if (null by-language)
+        (message "[lsp-ltex-plus] %s: Malformed arguments %S" label args)
+      (while by-language
+        (let ((language (substring (symbol-name (pop by-language)) 1))
+              (entries (append (pop by-language) nil)))
+          (lsp-ltex-plus--save-addition kind language entries command)))))
+  (lsp-ltex-plus--push-configuration))
+
+(defun lsp-ltex-plus--action-add-to-dictionary (command)
+  "Carry out the `_ltex.addToDictionary' COMMAND."
+  (lsp-ltex-plus--handle-addition-action command 'dictionary :words "addToDictionary"))
+
+(defun lsp-ltex-plus--action-disable-rules (command)
+  "Carry out the `_ltex.disableRules' COMMAND."
+  (lsp-ltex-plus--handle-addition-action command 'disabled-rules :ruleIds "disableRules"))
+
+(defun lsp-ltex-plus--action-hide-false-positives (command)
+  "Carry out the `_ltex.hideFalsePositives' COMMAND."
+  (lsp-ltex-plus--handle-addition-action command 'hidden-false-positives
+                                         :falsePositives "hideFalsePositives"))
+
+(defconst lsp-ltex-plus--command-handlers
+  '(("_ltex.addToDictionary" . lsp-ltex-plus--action-add-to-dictionary)
+    ("_ltex.disableRules" . lsp-ltex-plus--action-disable-rules)
+    ("_ltex.hideFalsePositives" . lsp-ltex-plus--action-hide-false-positives))
+  "The server commands this client carries out itself, and how.")
+
+(defun lsp-ltex-plus--execute-command (command)
+  "Carry out the protocol COMMAND object, if it is one of ours.
+Any other command is reported: the server advertises none the client
+could send back, so there is nothing else to do with it."
+  (let ((name (plist-get command :command)))
+    (if-let* ((handler (cdr (assoc name lsp-ltex-plus--command-handlers))))
+        (funcall handler command)
+      (message "[lsp-ltex-plus] Cannot carry out the command %S" name))))
+
+(defun lsp-ltex-plus--run-action (action)
+  "Carry out the code ACTION the user chose.
+An action carrying an edit has it applied; one carrying a command has
+the command carried out; one carrying both, which the protocol allows,
+has the edit applied first."
+  (when-let* ((edit (plist-get action :edit)))
+    (lsp-ltex-plus--apply-workspace-edit edit))
+  (when-let* ((command (plist-get action :command)))
+    (lsp-ltex-plus--execute-command command))
+  (when (and (null (plist-get action :edit)) (null (plist-get action :command)))
+    (message "[lsp-ltex-plus] The action %S does nothing" (plist-get action :title))))
+
 (provide 'lsp-ltex-plus-actions)
 ;;; lsp-ltex-plus-actions.el ends here
