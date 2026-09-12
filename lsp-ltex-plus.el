@@ -78,6 +78,82 @@
 (require 'lsp-ltex-plus-conn)
 (require 'lsp-ltex-plus-diag)
 
+;;;; -- Setup and reload -------------------------------------------------------
+
+(defun lsp-ltex-plus--setup ()
+  "Load the persisted lists and apply the debug defaults.
+Run once when the package loads and again by `lsp-ltex-plus-reload-settings',
+so it must stay idempotent: nothing here accumulates."
+  (unless lsp-ltex-plus--start-time
+    (setq lsp-ltex-plus--start-time (current-time)))
+  (lsp-ltex-plus--log "Loading settings...")
+  ;; TODO(2027-05): Remove this migration block (see
+  ;; `lsp-ltex-plus--migrate-extensionless-file').
+  (dolist (pair `((,lsp-ltex-plus-dictionary-file
+                   . ,(expand-file-name "lsp-ltex-plus/stored-dictionary.eld"
+                                        user-emacs-directory))
+                  (,lsp-ltex-plus-enabled-rules-file
+                   . ,(expand-file-name "lsp-ltex-plus/enabled-rules.eld"
+                                        user-emacs-directory))
+                  (,lsp-ltex-plus-disabled-rules-file
+                   . ,(expand-file-name "lsp-ltex-plus/disabled-rules.eld"
+                                        user-emacs-directory))
+                  (,lsp-ltex-plus-hidden-false-positives-file
+                   . ,(expand-file-name "lsp-ltex-plus/hidden-false-positives.eld"
+                                        user-emacs-directory))))
+    (lsp-ltex-plus--migrate-extensionless-file (car pair) (cdr pair)))
+  (lsp-ltex-plus--load-external-settings)
+  ;; Under debug, ask the server for its own trace of the exchange too.
+  ;; "messages" rather than "verbose": the jsonrpc events buffer already
+  ;; holds every payload, so the verbose trace would double it.
+  (when (and lsp-ltex-plus-debug (string= lsp-ltex-plus-trace-server "off"))
+    (setq lsp-ltex-plus-trace-server "messages"))
+  (lsp-ltex-plus--log "Settings loaded."))
+
+;;;###autoload
+(defun lsp-ltex-plus-reload-settings ()
+  "Apply changes to any `lsp-ltex-plus-*\=' setting, without restarting Emacs.
+
+Everything the client reads is refreshed in one go:
+
+  1. The four word-list files under the `lsp-ltex-plus/\=' subdirectory of
+     `user-emacs-directory\=' are re-read and their merged views rebuilt,
+     and the cache of project settings files is dropped (see the
+     `lsp-ltex-plus-project-*-file\=' settings).
+  2. The running server is told the configuration changed, so it fetches
+     its settings again and the change takes effect on the next check
+     with no server restart.
+
+Use it after changing any `lsp-ltex-plus-*\=' setting in a running
+session, or after hand-editing one of the word-list files.  Project
+files are noticed on their own when their modification time moves, so
+they need this only if one was changed in a way that left the time
+untouched.
+
+What it cannot reach is a setting the server reads only when it
+starts, such as the executable or the Java to run it with; those need
+`lsp-ltex-plus-restart-server'.  Safe to run as often as you like."
+  (interactive)
+  (lsp-ltex-plus--setup)
+  (if (lsp-ltex-plus--push-configuration)
+      (message "[lsp-ltex-plus] Settings reloaded and pushed to the server.")
+    (message "[lsp-ltex-plus] Settings reloaded; no server is running.")))
+
+;; Superseded names.  `-reload-external-settings' described only the
+;; disk-reload half (v0.3.0, renamed in v0.3.1); `-reload-and-notify-server'
+;; then described the disk reload and the push, but not the re-registration
+;; that a *Setup-only* setting once needed -- so users had to know which
+;; of two commands to reach for.  There is now one.
+(define-obsolete-function-alias 'lsp-ltex-plus-reload-and-notify-server
+  #'lsp-ltex-plus-reload-settings
+  "0.5.0"
+  "Merged with the setup path, so one command applies any setting change.")
+
+(define-obsolete-function-alias 'lsp-ltex-plus-reload-external-settings
+  #'lsp-ltex-plus-reload-settings
+  "0.3.1"
+  "Renamed; see `lsp-ltex-plus-reload-settings'.")
+
 ;;;; -- Minor mode -------------------------------------------------------------
 
 ;; Activation is a few decisions and two calls.  The decisions are the
@@ -241,6 +317,10 @@ server has got into a state a fresh one would not be in."
       (with-current-buffer buffer (lsp-ltex-plus-mode 1)))
     (message "[lsp-ltex-plus] ltex-ls-plus restarted for %d buffer%s"
              (length buffers) (if (= 1 (length buffers)) "" "s"))))
+
+;; Load the persisted lists once, at load time.  In a test run this reads
+;; four files that do not exist under the sandboxed `user-emacs-directory'.
+(lsp-ltex-plus--setup)
 
 (provide 'lsp-ltex-plus)
 ;;; lsp-ltex-plus.el ends here

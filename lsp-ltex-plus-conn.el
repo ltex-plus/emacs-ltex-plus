@@ -693,6 +693,24 @@ against."
               #'lsp-ltex-plus--workspace-specific-entry))
            (plist-get params :items))))
 
+(defun lsp-ltex-plus--push-configuration (&optional conn)
+  "Send the server the global settings as `workspace/didChangeConfiguration'.
+CONN defaults to the session connection; nothing is sent when there is
+none.  The push carries the settings as read outside any buffer, which
+is all one push can carry: it names no document, so no project's
+`.dir-locals.el' can apply.  It is what the server checks a document
+against until its first pull, and it is what tells the server to pull
+again after a setting changed; the per-document values come back in
+the reply to that pull."
+  (when-let* ((conn (or conn (lsp-ltex-plus--live-connection))))
+    (lsp-ltex-plus--log "Pushing configuration")
+    (jsonrpc-notify conn 'workspace/didChangeConfiguration
+                    (list :settings
+                          (list :ltex (with-temp-buffer
+                                        (lsp-ltex-plus--settings-object)))))))
+
+(add-hook 'lsp-ltex-plus--after-initialize-functions #'lsp-ltex-plus--push-configuration)
+
 (defun lsp-ltex-plus--answer-configuration (params)
   "Answer the server's `workspace/configuration' request PARAMS.
 PARAMS carries `items', a vector of (scopeUri URI, section SECTION).

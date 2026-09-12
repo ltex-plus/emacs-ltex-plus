@@ -18,6 +18,7 @@
 ;;; Code:
 
 (require 'ltex-plus-test-helper)
+(require 'ltex-plus-fake-server)
 
 ;;;; -- Merging ----------------------------------------------------------------
 
@@ -260,6 +261,46 @@ Renaming would silently discard whichever file lost."
       (should (file-exists-p old))
       (should (equal (ltex-plus-test-words (ltex-plus-test-read-file new))
                      '("new"))))))
+
+;;;; -- The reload command -----------------------------------------------------
+
+(ert-deftest ltex-plus-settings-test-old-reload-names-still-resolve ()
+  "Both commands the reload replaced survive as obsolete aliases."
+  (dolist (name '(lsp-ltex-plus-reload-and-notify-server
+                  lsp-ltex-plus-reload-external-settings))
+    (should (fboundp name))
+    (should (eq (indirect-function name)
+                (indirect-function 'lsp-ltex-plus-reload-settings)))))
+
+(ert-deftest ltex-plus-settings-test-reload-rereads-the-files ()
+  "A hand-edited global file is read back into the merged view by the reload."
+  (ltex-plus-test-reset)
+  (lsp-ltex-plus--save-plist '(:en-US ["Flimberry"]) lsp-ltex-plus-dictionary-file)
+  (should-not (ltex-plus-test-words lsp-ltex-plus--dictionary-merged))
+  (let ((inhibit-message t))
+    (lsp-ltex-plus-reload-settings))
+  (should (equal (ltex-plus-test-words lsp-ltex-plus--dictionary-merged) '("Flimberry"))))
+
+(ert-deftest ltex-plus-settings-test-reload-tells-the-server ()
+  "With a server running, the reload pushes the configuration again.
+The push is what makes the server pull its settings afresh, so the
+edited file reaches the next check."
+  (ltex-plus-fake-with-connection
+    (ltex-plus-fake-ready-connection)
+    (ltex-plus-fake-wait-for
+     (lambda () (ltex-plus-fake-received 'workspace/didChangeConfiguration)))
+    (let ((inhibit-message t))
+      (lsp-ltex-plus-reload-settings))
+    (ltex-plus-fake-wait-for
+     (lambda () (= 2 (length (ltex-plus-fake-received 'workspace/didChangeConfiguration)))))))
+
+(ert-deftest ltex-plus-settings-test-setup-is-idempotent ()
+  "Running setup twice leaves the lists as one run left them."
+  (ltex-plus-test-reset)
+  (lsp-ltex-plus--save-plist '(:en-US ["once"]) lsp-ltex-plus-dictionary-file)
+  (lsp-ltex-plus--setup)
+  (lsp-ltex-plus--setup)
+  (should (equal (ltex-plus-test-words lsp-ltex-plus--dictionary-merged) '("once"))))
 
 ;;;; -- The settings object ----------------------------------------------------
 

@@ -183,6 +183,30 @@ before any of them, so configuration is pushed before documents open."
           (lsp-ltex-plus--when-ready conn (lambda () (push 'third order)))
           (should (eq (car order) 'third)))))))
 
+(ert-deftest ltex-plus-conn-test-configuration-is-pushed-after-the-handshake ()
+  "The global settings go out as didChangeConfiguration right after `initialized'.
+Before any document opens: it is what the server checks against until
+its first pull, and the server was seen to need it.  The values are the
+global ones, since the push names no document."
+  (ltex-plus-fake-with-connection
+    (ltex-plus-conn-test--with-open-file buffer "Text.\n"
+      (with-current-buffer buffer (setq-local lsp-ltex-plus-language "de-DE"))
+      (lsp-ltex-plus--open-document buffer)
+      (ltex-plus-fake-wait-for (lambda () (ltex-plus-fake-received 'textDocument/didOpen)))
+      (should (equal (mapcar #'car (reverse ltex-plus-fake-received))
+                     '(initialize initialized workspace/didChangeConfiguration
+                                  textDocument/didOpen)))
+      (let ((settings (plist-get (car (ltex-plus-fake-received
+                                       'workspace/didChangeConfiguration))
+                                 :settings)))
+        (should (equal (plist-get (plist-get settings :ltex) :language)
+                       (default-value 'lsp-ltex-plus-language)))))))
+
+(ert-deftest ltex-plus-conn-test-pushing-without-a-server-is-a-no-op ()
+  "With no server running there is nobody to push to, and nothing signals."
+  (let ((lsp-ltex-plus--connection nil))
+    (should-not (lsp-ltex-plus--push-configuration))))
+
 (ert-deftest ltex-plus-conn-test-the-connection-is-reused-while-it-lives ()
   "A second buffer asking for the server gets the same connection."
   (ltex-plus-fake-with-connection
@@ -284,7 +308,8 @@ which fails in a batch Emacs."
       (should-not (lsp-ltex-plus--document-open-p buffer))
       (ltex-plus-fake-wait-for (lambda () (ltex-plus-fake-received 'textDocument/didOpen)))
       (should (equal (mapcar #'car (reverse ltex-plus-fake-received))
-                     '(initialize initialized textDocument/didOpen))))))
+                     '(initialize initialized workspace/didChangeConfiguration
+                                  textDocument/didOpen))))))
 
 (ert-deftest ltex-plus-conn-test-opening-twice-sends-once ()
   "A second open of the same buffer is a no-op."
