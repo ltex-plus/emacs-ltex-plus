@@ -213,42 +213,62 @@ The server keeps running: another buffer may need it."
 
 ;;;; -- Flyspell ------------------------------------------------------------------
 
+;; The real `flyspell-mode' needs a spell-checking program, which the CI
+;; runners do not have, and stays off without one.  What is under test is
+;; what this package reads and calls, so the mode function is stubbed to
+;; toggle the variable and record the calls.
+
+(defmacro ltex-plus-mode-test--with-stub-flyspell (calls &rest body)
+  "Run BODY with `flyspell-mode' stubbed; CALLS collects its arguments."
+  (declare (indent 1) (debug (symbolp body)))
+  `(let ((,calls nil))
+     (cl-letf (((symbol-function 'flyspell-mode)
+                (lambda (&optional arg)
+                  (push arg ,calls)
+                  (setq flyspell-mode (not (and (numberp arg) (< arg 0)))))))
+       ,@body)))
+
 (ert-deftest ltex-plus-mode-test-flyspell-is-left-alone-by-default ()
-  "With the option off, flyspell stays on beside LTeX+."
+  "With the option off, flyspell is neither stopped nor started."
   (ltex-plus-fake-with-connection
     (ltex-plus-mode-test--with-file buffer "Text.\n"
       (with-current-buffer buffer
-        (flyspell-mode 1)
-        (let ((lsp-ltex-plus-disable-flyspell nil))
-          (lsp-ltex-plus-mode 1))
-        (should flyspell-mode)
-        (lsp-ltex-plus-mode -1)
-        (should flyspell-mode)))))
+        (ltex-plus-mode-test--with-stub-flyspell calls
+          (setq-local flyspell-mode t)
+          (let ((lsp-ltex-plus-disable-flyspell nil))
+            (lsp-ltex-plus-mode 1)
+            (lsp-ltex-plus-mode -1))
+          (should flyspell-mode)
+          (should-not calls))))))
 
 (ert-deftest ltex-plus-mode-test-flyspell-is-stopped-and-restored-when-asked ()
   "With the option on, flyspell goes off with the mode and comes back with it."
   (ltex-plus-fake-with-connection
     (ltex-plus-mode-test--with-file buffer "Text.\n"
       (with-current-buffer buffer
-        (flyspell-mode 1)
-        (let ((lsp-ltex-plus-disable-flyspell t))
-          (lsp-ltex-plus-mode 1)
-          (should-not flyspell-mode)
-          (should lsp-ltex-plus--stopped-flyspell)
-          (lsp-ltex-plus-mode -1))
-        (should flyspell-mode)
-        (should-not lsp-ltex-plus--stopped-flyspell)))))
+        (ltex-plus-mode-test--with-stub-flyspell calls
+          (setq-local flyspell-mode t)
+          (let ((lsp-ltex-plus-disable-flyspell t))
+            (lsp-ltex-plus-mode 1)
+            (should-not flyspell-mode)
+            (should lsp-ltex-plus--stopped-flyspell)
+            (lsp-ltex-plus-mode -1))
+          (should flyspell-mode)
+          (should-not lsp-ltex-plus--stopped-flyspell)
+          (should (equal (reverse calls) '(-1 1))))))))
 
 (ert-deftest ltex-plus-mode-test-flyspell-that-was-off-stays-off ()
   "The option never turns flyspell on: a buffer without it is left without it."
   (ltex-plus-fake-with-connection
     (ltex-plus-mode-test--with-file buffer "Text.\n"
       (with-current-buffer buffer
-        (should-not flyspell-mode)
-        (let ((lsp-ltex-plus-disable-flyspell t))
-          (lsp-ltex-plus-mode 1)
-          (lsp-ltex-plus-mode -1))
-        (should-not flyspell-mode)))))
+        (ltex-plus-mode-test--with-stub-flyspell calls
+          (should-not flyspell-mode)
+          (let ((lsp-ltex-plus-disable-flyspell t))
+            (lsp-ltex-plus-mode 1)
+            (lsp-ltex-plus-mode -1))
+          (should-not flyspell-mode)
+          (should-not calls))))))
 
 (ert-deftest ltex-plus-mode-test-shutting-the-server-down-switches-the-mode-off ()
   "`lsp-ltex-plus-shutdown-server' ends the server and the mode in its buffers."
