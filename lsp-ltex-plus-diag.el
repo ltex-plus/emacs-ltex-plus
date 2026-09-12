@@ -109,6 +109,15 @@ after that, until flymake hands over a newer one."
   (setq lsp-ltex-plus--flymake-report-fn report-fn)
   (lsp-ltex-plus--flymake-report (current-buffer)))
 
+;; Flymake 1.4.7 (Emacs 32) runs a backend in a buffer whose content is
+;; not trusted only if the backend says it is safe there.  This one is: it
+;; executes nothing from the buffer, it sends the text to the server the
+;; user configured and shows what comes back, which is no more than a
+;; spell checker does.  Without the declaration every file outside
+;; `trusted-content' -- most of a user's files -- would silently get no
+;; diagnostics.  Older flymakes ignore the property.
+(function-put #'lsp-ltex-plus-flymake-backend 'flymake-always-safe t)
+
 (defun lsp-ltex-plus--flymake-attach ()
   "Make the current buffer show the server's diagnostics through flymake.
 Adds the backend and turns `flymake-mode' on if it is not already."

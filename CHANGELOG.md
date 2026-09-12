@@ -26,6 +26,7 @@ The client no longer runs on `lsp-mode`. It speaks the Language Server Protocol 
 - **Word completion is not requested.** `lsp-ltex-plus-completion-enabled` is still sent to the server, but the client does not issue `textDocument/completion`; the old behaviour came from `lsp-mode`'s completion machinery.
 
 ### Fixed
+- **The flymake backend declares itself safe for untrusted content.** Flymake 1.4.7 (Emacs 32) runs a backend in a buffer whose content is not trusted only if the backend carries the `flymake-always-safe` property; without it every file outside `trusted-content`, which is most of a user's files, silently got no diagnostics. The backend executes nothing from the buffer, so it declares the property; older flymakes ignore it.
 - **The position conversion counts UTF-16 code units,** as the protocol's default and what the client declares. Text after an emoji is underlined where it is.
 
 
