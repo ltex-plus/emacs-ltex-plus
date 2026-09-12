@@ -1,0 +1,250 @@
+;;; ltex-plus-mode-test.el --- The minor mode's own decisions -*- lexical-binding: t; -*-
+
+;; This Source Code Form is subject to the terms of the Mozilla Public
+;; License, v. 2.0. If a copy of the MPL was not distributed with this
+;; file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+;;; Commentary:
+
+;; `lsp-ltex-plus-mode' is the entry point.  What it decides before it
+;; reaches for the server -- the programming-language guard, registering
+;; a major mode it has not seen, giving up when the binary is missing --
+;; is tested with the binary stubbed away, so the mode aborts exactly
+;; where it looks for the server.  What it does once it reaches for the
+;; server is tested against the fake: opening and closing the document,
+;; attaching flymake, and the two commands that stop and restart the
+;; server for every buffer at once.
+
+;;; Code:
+
+(require 'ltex-plus-test-helper)
+(require 'ltex-plus-fake-server)
+
+(defvar ltex-plus-mode-test--looked-for-server nil
+  "Set when the mode body got as far as looking for the binary.")
+
+(defmacro ltex-plus-mode-test--in-mode (mode &rest body)
+  "Run BODY in a temp buffer whose `major-mode' is MODE, server absent.
+`lsp-ltex-plus--server-executable' answers nil throughout, so the mode
+aborts where it looks for `ltex-ls-plus' instead of starting one, and
+`ltex-plus-mode-test--looked-for-server' records whether it got that
+far.  The mode table is restored on exit, since activation in an
+unregistered mode writes to it."
+  (declare (indent 1) (debug t))
+  `(let ((ltex-plus-mode-test--looked-for-server nil)
+         (lsp-ltex-plus-major-modes (copy-tree lsp-ltex-plus-major-modes))
+         (inhibit-message t))
+     (cl-letf (((symbol-function 'lsp-ltex-plus--server-executable)
+                (lambda (&rest _)
+                  (setq ltex-plus-mode-test--looked-for-server t)
+                  nil)))
+       (with-temp-buffer
+         (setq major-mode ,mode)
+         ,@body))))
+
+;;;; -- The programming-language guard -----------------------------------------
+
+(ert-deftest ltex-plus-mode-test-dispatcher-skips-programming-modes ()
+  "Activation from the dispatcher bails out in a programming buffer.
+With `lsp-ltex-plus-check-programming-languages' off, a mode marked
+`PROGRAMMING-P' must not start the client -- and must not merely fail
+later, but stop before looking for the server at all, since the whole
+point is that opening a Python file costs nothing."
+  (let ((lsp-ltex-plus-check-programming-languages nil))
+    (ltex-plus-mode-test--in-mode 'python-mode
+      (lsp-ltex-plus-mode 1)
+      (should-not lsp-ltex-plus-mode)
+      (should-not ltex-plus-mode-test--looked-for-server))))
+
+(ert-deftest ltex-plus-mode-test-an-explicit-call-overrides-the-guard ()
+  "`M-x lsp-ltex-plus-mode' proceeds in a programming buffer anyway.
+The guard is on dispatcher-driven activation only, so an on-demand check
+does not require toggling a global setting first."
+  (let ((lsp-ltex-plus-check-programming-languages nil))
+    (ltex-plus-mode-test--in-mode 'python-mode
+      (funcall-interactively #'lsp-ltex-plus-mode 1)
+      (should ltex-plus-mode-test--looked-for-server))))
+
+(ert-deftest ltex-plus-mode-test-opting-in-lifts-the-guard ()
+  "With the option on, the dispatcher activates in a programming buffer."
+  (let ((lsp-ltex-plus-check-programming-languages t))
+    (ltex-plus-mode-test--in-mode 'python-mode
+      (lsp-ltex-plus-mode 1)
+      (should ltex-plus-mode-test--looked-for-server))))
+
+(ert-deftest ltex-plus-mode-test-markup-modes-are-never-guarded ()
+  "A markup mode activates whatever the programming option says."
+  (dolist (value '(nil t))
+    (let ((lsp-ltex-plus-check-programming-languages value))
+      (ltex-plus-mode-test--in-mode 'markdown-mode
+        (lsp-ltex-plus-mode 1)
+        (should ltex-plus-mode-test--looked-for-server)))))
+
+;;;; -- Giving up when the server is not installed -----------------------------
+
+(ert-deftest ltex-plus-mode-test-a-missing-binary-turns-the-mode-off ()
+  "Without `ltex-ls-plus' the mode reports and switches itself off.
+Leaving the mode variable on would show a lighter for a buffer nothing
+is checking."
+  (ltex-plus-mode-test--in-mode 'markdown-mode
+    (lsp-ltex-plus-mode 1)
+    (should ltex-plus-mode-test--looked-for-server)
+    (should-not lsp-ltex-plus-mode)))
+
+(ert-deftest ltex-plus-mode-test-the-report-names-the-configured-executable ()
+  "The message about a missing binary says which name was looked for.
+Setting `lsp-ltex-plus-ls-plus-executable' to an absolute path is the
+documented way to run a server that is not on PATH, and the message is
+where a typo in it shows up."
+  (let ((lsp-ltex-plus-ls-plus-executable "/opt/ltex/bin/no-such-ltex-ls-plus")
+        (lsp-ltex-plus-ltex-ls-path nil)
+        (lsp-ltex-plus-major-modes (copy-tree lsp-ltex-plus-major-modes))
+        (said nil))
+    (cl-letf (((symbol-function 'message)
+               (lambda (fmt &rest args) (setq said (apply #'format fmt args)))))
+      (with-temp-buffer
+        (setq major-mode 'markdown-mode)
+        (lsp-ltex-plus-mode 1)
+        (should-not lsp-ltex-plus-mode)))
+    (should (string-match-p "/opt/ltex/bin/no-such-ltex-ls-plus" said))
+    (should (string-match-p "lsp-ltex-plus-ls-plus-executable" said))))
+
+;;;; -- Registering an unknown major mode --------------------------------------
+
+;; These run with the server present but the buffer visiting no file, so
+;; the mode registers the major mode and then declines for want of a
+;; file; the registration is what is under test.
+
+(defmacro ltex-plus-mode-test--with-server-present (&rest body)
+  "Run BODY with a temp buffer current and the binary apparently installed."
+  (declare (indent 0) (debug t))
+  `(let ((lsp-ltex-plus-major-modes (copy-tree lsp-ltex-plus-major-modes))
+         (inhibit-message t))
+     (cl-letf (((symbol-function 'lsp-ltex-plus--server-executable)
+                (lambda (&rest _) "ltex-ls-plus")))
+       (with-temp-buffer
+         ,@body))))
+
+(ert-deftest ltex-plus-mode-test-unknown-mode-is-registered-silently ()
+  "A mode the package has not seen is added, defaulting to plaintext.
+Called from the dispatcher there is nobody to ask, so no prompt may
+appear; the entry is markup (`PROGRAMMING-P' nil), since an unknown mode
+is far likelier to be a writing context than a language."
+  (ltex-plus-mode-test--with-server-present
+    (setq major-mode 'ltex-plus-mode-test-unknown-mode)
+    (cl-letf (((symbol-function 'read-string)
+               (lambda (&rest _) (error "Nobody should be asked"))))
+      (lsp-ltex-plus-mode 1))
+    (should (equal (assq 'ltex-plus-mode-test-unknown-mode lsp-ltex-plus-major-modes)
+                   '(ltex-plus-mode-test-unknown-mode "plaintext" nil)))))
+
+(ert-deftest ltex-plus-mode-test-an-explicit-call-asks-for-the-language ()
+  "Interactively the language identifier is requested, with a default."
+  (ltex-plus-mode-test--with-server-present
+    (setq major-mode 'ltex-plus-mode-test-asked-mode)
+    (cl-letf (((symbol-function 'read-string) (lambda (&rest _) "typst")))
+      (funcall-interactively #'lsp-ltex-plus-mode 1))
+    (should (equal (assq 'ltex-plus-mode-test-asked-mode lsp-ltex-plus-major-modes)
+                   '(ltex-plus-mode-test-asked-mode "typst" nil)))))
+
+(ert-deftest ltex-plus-mode-test-a-known-mode-is-not-registered-twice ()
+  "A mode already in the table is left exactly as it is."
+  (ltex-plus-mode-test--with-server-present
+    (setq major-mode 'markdown-mode)
+    (let ((before (copy-tree lsp-ltex-plus-major-modes)))
+      (lsp-ltex-plus-mode 1)
+      (should (equal lsp-ltex-plus-major-modes before)))))
+
+(ert-deftest ltex-plus-mode-test-a-file-less-buffer-is-declined-for-now ()
+  "A buffer visiting no file is left alone until its support returns.
+The mode variable is left nil, so nothing claims to be checking it."
+  (ltex-plus-mode-test--with-server-present
+    (setq major-mode 'markdown-mode)
+    (lsp-ltex-plus-mode 1)
+    (should-not lsp-ltex-plus-mode)))
+
+;;;; -- Against the fake -------------------------------------------------------
+
+(defmacro ltex-plus-mode-test--with-file (var contents &rest body)
+  "Run BODY with VAR bound to a buffer visiting an `.rst' file of CONTENTS."
+  (declare (indent 2) (debug (symbolp form body)))
+  `(ltex-plus-test-with-project (list (cons "note.rst" ,contents))
+     (let ((,var (ltex-plus-test-visit (project-file "note.rst")))
+           (inhibit-message t))
+       (with-current-buffer ,var (rst-mode))
+       ,@body)))
+
+(ert-deftest ltex-plus-mode-test-enabling-opens-the-document-under-flymake ()
+  "Turning the mode on opens the buffer on the server and shows its findings."
+  (ltex-plus-fake-with-connection
+    (ltex-plus-mode-test--with-file buffer "Hello teh world.\n"
+      (with-current-buffer buffer
+        (lsp-ltex-plus-mode 1)
+        (should lsp-ltex-plus-mode)
+        (should flymake-mode)
+        (should (memq #'lsp-ltex-plus-flymake-backend flymake-diagnostic-functions))
+        (flymake-start))
+      (ltex-plus-fake-wait-for (lambda () (ltex-plus-fake-received 'textDocument/didOpen)))
+      (should (lsp-ltex-plus--document-open-p buffer))
+      (ltex-plus-fake-wait-for
+       (lambda () (with-current-buffer buffer (flymake-diagnostics)))))))
+
+(ert-deftest ltex-plus-mode-test-disabling-closes-the-document-and-clears ()
+  "Turning the mode off closes the document and takes the underlines away.
+The server keeps running: another buffer may need it."
+  (ltex-plus-fake-with-connection
+    (ltex-plus-mode-test--with-file buffer "Hello teh world.\n"
+      (with-current-buffer buffer (lsp-ltex-plus-mode 1) (flymake-start))
+      (ltex-plus-fake-wait-for
+       (lambda () (with-current-buffer buffer (flymake-diagnostics))))
+      (with-current-buffer buffer (lsp-ltex-plus-mode -1))
+      (ltex-plus-fake-wait-for (lambda () (ltex-plus-fake-received 'textDocument/didClose)))
+      (should-not (lsp-ltex-plus--document-open-p buffer))
+      (should-not (with-current-buffer buffer (flymake-diagnostics)))
+      (should-not (with-current-buffer buffer
+                    (memq #'lsp-ltex-plus-flymake-backend flymake-diagnostic-functions)))
+      (should (lsp-ltex-plus--live-connection)))))
+
+(ert-deftest ltex-plus-mode-test-shutting-the-server-down-switches-the-mode-off ()
+  "`lsp-ltex-plus-shutdown-server' ends the server and the mode in its buffers."
+  (ltex-plus-fake-with-connection
+    (ltex-plus-mode-test--with-file buffer "Text.\n"
+      (with-current-buffer buffer (lsp-ltex-plus-mode 1))
+      (ltex-plus-fake-wait-for (lambda () (ltex-plus-fake-received 'textDocument/didOpen)))
+      (lsp-ltex-plus-shutdown-server)
+      (should-not (lsp-ltex-plus--live-connection))
+      (should-not (buffer-local-value 'lsp-ltex-plus-mode buffer))
+      (should-not (lsp-ltex-plus--document-open-p buffer)))))
+
+(ert-deftest ltex-plus-mode-test-a-server-that-dies-switches-the-mode-off ()
+  "When the server goes away on its own, no buffer is left claiming to be checked."
+  (ltex-plus-fake-with-connection
+    (ltex-plus-mode-test--with-file buffer "Text.\n"
+      (with-current-buffer buffer (lsp-ltex-plus-mode 1))
+      (ltex-plus-fake-wait-for (lambda () (ltex-plus-fake-received 'textDocument/didOpen)))
+      (let ((conn lsp-ltex-plus--connection))
+        (ltex-plus-fake-stop)
+        (ltex-plus-fake-wait-for (lambda () (not (jsonrpc-running-p conn)))))
+      (should-not (buffer-local-value 'lsp-ltex-plus-mode buffer)))))
+
+(ert-deftest ltex-plus-mode-test-restarting-reopens-every-checked-buffer ()
+  "`lsp-ltex-plus-restart-server' brings a new server up with the same buffers."
+  (ltex-plus-fake-with-connection
+    (ltex-plus-mode-test--with-file buffer "Text.\n"
+      (with-current-buffer buffer (lsp-ltex-plus-mode 1))
+      (ltex-plus-fake-wait-for (lambda () (ltex-plus-fake-received 'textDocument/didOpen)))
+      (let ((first lsp-ltex-plus--connection))
+        ;; The fake must be listening again for the new server to connect.
+        (cl-letf (((symbol-function 'lsp-ltex-plus--shutdown-connection)
+                   (let ((original (symbol-function 'lsp-ltex-plus--shutdown-connection)))
+                     (lambda (&rest args)
+                       (apply original args)
+                       (ltex-plus-fake-start)))))
+          (lsp-ltex-plus-restart-server))
+        (should (buffer-local-value 'lsp-ltex-plus-mode buffer))
+        (ltex-plus-fake-wait-for (lambda () (ltex-plus-fake-received 'textDocument/didOpen)))
+        (should-not (eq first lsp-ltex-plus--connection))
+        (should (lsp-ltex-plus--document-open-p buffer))))))
+
+(provide 'ltex-plus-mode-test)
+;;; ltex-plus-mode-test.el ends here

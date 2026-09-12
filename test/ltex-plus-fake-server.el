@@ -249,7 +249,9 @@ starts from nothing."
   `(progn
      (ltex-plus-fake-start)
      (unwind-protect
-         (cl-letf (((symbol-function 'lsp-ltex-plus--server-command)
+         (cl-letf (((symbol-function 'lsp-ltex-plus--server-executable)
+                    (lambda () "ltex-ls-plus"))
+                   ((symbol-function 'lsp-ltex-plus--server-command)
                     (lambda () (list "ltex-ls-plus")))
                    ((symbol-function 'lsp-ltex-plus--make-process)
                     #'ltex-plus-fake--connect))

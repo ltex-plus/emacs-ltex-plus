@@ -78,9 +78,169 @@
 (require 'lsp-ltex-plus-conn)
 (require 'lsp-ltex-plus-diag)
 
-;; The client layer -- connection, document sync, diagnostics, code actions
-;; and the minor mode -- is being rebuilt on `jsonrpc'.  Until it lands this
-;; file only loads the settings; the package is not usable in between.
+;;;; -- Minor mode -------------------------------------------------------------
+
+;; Activation is a few decisions and two calls.  The decisions are the
+;; mode's own -- whether a programming-language buffer should be checked,
+;; and registering a major mode it has not met -- and are taken before the
+;; server is involved at all.  The calls attach the flymake backend and
+;; open the document on the session's server, starting it if this is the
+;; first buffer to ask.  There is no workspace to find or join: one
+;; server serves every buffer, and a buffer is either open on it or not.
+
+(defvar lsp-ltex-plus-mode)  ; defined below; the helpers set it when they decline
+
+(defun lsp-ltex-plus--register-major-mode (interactive)
+  "Add the current `major-mode' to `lsp-ltex-plus-major-modes' if it is absent.
+With INTERACTIVE non-nil the language id is asked for, defaulting to
+plain text; otherwise plain text is used silently.  A mode added this
+way is markup, not a programming language: an unknown mode is far
+likelier to be a writing context than a language."
+  (unless (assq major-mode lsp-ltex-plus-major-modes)
+    (let ((language-id (if interactive
+                           (read-string
+                            (format "Language ID for %s (RET for \"plaintext\"): "
+                                    major-mode)
+                            nil nil "plaintext")
+                         "plaintext")))
+      (push (list major-mode language-id nil) lsp-ltex-plus-major-modes))))
+
+(defun lsp-ltex-plus--enable (interactive)
+  "Turn checking on in the current buffer; the body of `lsp-ltex-plus-mode'.
+INTERACTIVE says whether the user asked for it by name, which lifts the
+programming-language guard and makes an unknown mode's language id a
+question rather than a default.  Each way this can decline leaves the
+mode variable nil, so the mode line and the dispatcher agree with what
+happened."
+  (let* ((entry (assq major-mode lsp-ltex-plus-major-modes))
+         (programming-p (and entry (nth 2 entry))))
+    (if (and programming-p
+             (not lsp-ltex-plus-check-programming-languages)
+             (not interactive))
+        ;; Dispatcher-driven activation in a programming buffer with the
+        ;; option off: the whole point is that opening such a file costs
+        ;; nothing, so stop here, before anything else is looked at.
+        (setq lsp-ltex-plus-mode nil)
+      (lsp-ltex-plus--register-major-mode interactive)
+      (lsp-ltex-plus--start-checking))))
+
+(defun lsp-ltex-plus--start-checking ()
+  "Attach flymake and open the current buffer on the server, if it can be.
+The second half of `lsp-ltex-plus--enable', reached once the buffer's
+major mode is known to the table."
+  (cond
+   ((not (lsp-ltex-plus--server-executable))
+    (message (concat "[lsp-ltex-plus] Cannot find `%s'.  See the installation"
+                     " instructions at https://github.com/ltex-plus/emacs-ltex-plus"
+                     " or set `lsp-ltex-plus-ls-plus-executable' to the binary's path")
+             lsp-ltex-plus-ls-plus-executable)
+    (setq lsp-ltex-plus-mode nil))
+   ((not buffer-file-name)
+    ;; File-less and comint buffers get their identities back in a later
+    ;; step of the move to jsonrpc; until then they are left alone.
+    (lsp-ltex-plus--log "Not checking %s: it visits no file" (buffer-name))
+    (setq lsp-ltex-plus-mode nil))
+   (t
+    (lsp-ltex-plus--log "Enabling LTeX+ in %s" (buffer-name))
+    (condition-case err
+        (progn
+          (lsp-ltex-plus--flymake-attach)
+          (lsp-ltex-plus--open-document))
+      (error
+       (lsp-ltex-plus--flymake-detach)
+       (setq lsp-ltex-plus-mode nil)
+       (message "[lsp-ltex-plus] Could not start checking: %s"
+                (error-message-string err)))))))
+
+(defun lsp-ltex-plus--disable ()
+  "Turn checking off in the current buffer; the body of `lsp-ltex-plus-mode'.
+The document is closed on the server and the underlines are cleared.
+The server itself keeps running for the other buffers, and for this one
+should the mode come back; `lsp-ltex-plus-shutdown-server' stops it."
+  (lsp-ltex-plus--log "Disabling LTeX+ in %s" (buffer-name))
+  (lsp-ltex-plus--close-document)
+  (lsp-ltex-plus--flymake-detach))
+
+;;;###autoload
+(define-minor-mode lsp-ltex-plus-mode
+  "Grammar and spell checking of the current buffer by LTeX+.
+
+When enabled, the buffer is opened on the session's `ltex-ls-plus'
+server, started if this is the first buffer to need it, and the
+server's findings are shown through flymake.  Run
+`lsp-ltex-plus-mode-hook' to apply any per-buffer tweaks.
+
+If the current major mode is not in `lsp-ltex-plus-major-modes', it is
+registered automatically before the server starts.  When called
+interactively the language identifier is requested from the user
+\(default: \"plaintext\"); when called from a hook or from Lisp,
+\"plaintext\" is used silently.
+
+In a buffer whose major mode is marked as a programming language,
+activation from the dispatcher is declined unless
+`lsp-ltex-plus-check-programming-languages' is non-nil; an explicit
+\\[lsp-ltex-plus-mode] always proceeds, so an on-demand check needs no
+global setting first."
+  :lighter " LTeX+"
+  :group 'lsp-ltex-plus
+  (if lsp-ltex-plus-mode
+      (lsp-ltex-plus--enable (called-interactively-p 'any))
+    (lsp-ltex-plus--disable)))
+
+;;;; -- The server as a whole --------------------------------------------------
+
+(defun lsp-ltex-plus--checked-buffers ()
+  "Return the live buffers in which `lsp-ltex-plus-mode' is on."
+  (seq-filter (lambda (buffer) (buffer-local-value 'lsp-ltex-plus-mode buffer))
+              (buffer-list)))
+
+(defvar lsp-ltex-plus--restarting nil
+  "Non-nil while `lsp-ltex-plus-restart-server' is stopping the old server.
+Keeps the buffers from being told the server went away, since they are
+about to get it back.")
+
+(defun lsp-ltex-plus--on-server-gone (_conn)
+  "Switch the mode off wherever it was on, once the server has ended.
+On `lsp-ltex-plus--after-shutdown-functions'.  A buffer whose server
+has gone is not being checked, and its mode line should not say it is;
+turning the mode on again starts a new server."
+  (unless lsp-ltex-plus--restarting
+    (let ((buffers (lsp-ltex-plus--checked-buffers)))
+      (dolist (buffer buffers)
+        (with-current-buffer buffer
+          (lsp-ltex-plus-mode -1)))
+      (when buffers
+        (message "[lsp-ltex-plus] ltex-ls-plus stopped; checking is off in %d buffer%s"
+                 (length buffers) (if (= 1 (length buffers)) "" "s"))))))
+
+(add-hook 'lsp-ltex-plus--after-shutdown-functions #'lsp-ltex-plus--on-server-gone)
+
+;;;###autoload
+(defun lsp-ltex-plus-shutdown-server ()
+  "Stop the session's `ltex-ls-plus' server.
+The mode is switched off in every buffer it was checking; turning it on
+again in any buffer starts a new server."
+  (interactive)
+  (if (lsp-ltex-plus--live-connection)
+      (lsp-ltex-plus--shutdown-connection)
+    (message "[lsp-ltex-plus] No ltex-ls-plus server is running")))
+
+;;;###autoload
+(defun lsp-ltex-plus-restart-server ()
+  "Stop the session's `ltex-ls-plus' server and start a new one.
+Every buffer that was being checked is reopened on the new server.  Use
+it after changing a setting the server reads only at start, or when the
+server has got into a state a fresh one would not be in."
+  (interactive)
+  (let ((buffers (lsp-ltex-plus--checked-buffers)))
+    (let ((lsp-ltex-plus--restarting t))
+      (dolist (buffer buffers)
+        (with-current-buffer buffer (lsp-ltex-plus-mode -1)))
+      (lsp-ltex-plus--shutdown-connection))
+    (dolist (buffer buffers)
+      (with-current-buffer buffer (lsp-ltex-plus-mode 1)))
+    (message "[lsp-ltex-plus] ltex-ls-plus restarted for %d buffer%s"
+             (length buffers) (if (= 1 (length buffers)) "" "s"))))
 
 (provide 'lsp-ltex-plus)
 ;;; lsp-ltex-plus.el ends here
