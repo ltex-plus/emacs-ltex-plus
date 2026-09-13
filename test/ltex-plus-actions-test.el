@@ -150,18 +150,6 @@ Applying the first one first would shift the second's positions."
      (ltex-plus-actions-test--edit "file:///t/a.rst" 1 '(0 0 0 0 "A") '(0 0 0 0 "B")))
     (should (equal (buffer-string) "ABx\n"))))
 
-(ert-deftest ltex-plus-actions-test-the-changes-form-is-applied-too ()
-  "An edit in the older `changes' form, keyed by URI, works as well.
-jsonrpc hands the object over as a plist whose keys are the URIs read
-as keywords."
-  (ltex-plus-actions-test--with-registered-buffer buffer "file:///t/a.rst" "teh end\n"
-    (lsp-ltex-plus--apply-workspace-edit
-     (list :changes (list (intern ":file:///t/a.rst")
-                          (vector (list :range '(:start (:line 0 :character 0)
-                                                 :end (:line 0 :character 3))
-                                        :newText "the")))))
-    (should (equal (buffer-string) "the end\n"))))
-
 (ert-deftest ltex-plus-actions-test-a-stale-version-is-refused ()
   "An edit for a version the buffer is no longer at touches nothing."
   (ltex-plus-actions-test--with-registered-buffer buffer "file:///t/a.rst" "aaa\n"

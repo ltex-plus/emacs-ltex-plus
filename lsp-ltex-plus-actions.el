@@ -91,9 +91,11 @@ text the server never saw."
   "Return the text edits in the `WorkspaceEdit' EDIT, grouped by document.
 A list of (URI VERSION . EDITS), one per document, in the order given.
 VERSION is the document version the server based the edits on, or nil
-where it named none.  Only text edits are accepted: an operation on a
-file itself -- create, rename, delete -- is refused with a `user-error',
-since a grammar checker has no business sending one."
+where it named none.  Only the `documentChanges' form is read, which is
+the one the client asks for and the one `ltex-ls-plus' sends; and only
+text edits are accepted: an operation on a file itself -- create,
+rename, delete -- is refused with a `user-error', since a grammar
+checker has no business sending one."
   (let ((result nil))
     (seq-doseq (change (plist-get edit :documentChanges))
       (if-let* ((document (plist-get change :textDocument)))
@@ -103,13 +105,6 @@ since a grammar checker has no business sending one."
                 result)
         (user-error "[lsp-ltex-plus] The edit wants to %s a file, which this client does not do"
                     (plist-get change :kind))))
-    ;; `changes' is an object keyed by URI, which jsonrpc hands over as a
-    ;; plist whose keys are the URIs read as keywords.
-    (let ((changes (plist-get edit :changes)))
-      (while (and (consp changes) (keywordp (car changes)))
-        (push (cons (substring (symbol-name (pop changes)) 1)
-                    (cons nil (append (pop changes) nil)))
-              result)))
     (nreverse result)))
 
 (defun lsp-ltex-plus--apply-text-edits (buffer edits)
