@@ -48,10 +48,10 @@
 ;;;; -- URIs -------------------------------------------------------------------
 
 ;; The server identifies a document by the URI the client gives it and
-;; quotes that URI back in every request about it.  Both conversions live
-;; here so that the round trip is under one roof: a file name turned into
-;; a URI and back must come out byte for byte the same, or the buffer the
-;; server is asking about can no longer be found by its file name.
+;; quotes that URI back in every request about it.  The URI is only ever
+;; looked up, in the document registry below; it is never turned back
+;; into a file name.  What matters is that the same file always gets the
+;; same URI, so that a buffer whose visited name changed can be noticed.
 
 (defconst lsp-ltex-plus--uri-path-allowed-chars
   (let ((vec (copy-sequence url-path-allowed-chars)))
@@ -63,26 +63,12 @@ letter is escaped the way other LSP clients escape it.")
 
 (defun lsp-ltex-plus--path-to-uri (path)
   "Return the `file://' URI for the local file name PATH.
-PATH is expanded but not resolved through symbolic links: the buffer
-visiting it is looked up by the name it was visited under, and
-`lsp-ltex-plus--uri-to-path' must give that name back."
+PATH is expanded but not resolved through symbolic links, so that the
+URI follows the name the buffer was visited under."
   (concat "file://"
           (if (eq system-type 'windows-nt) "/" "")
           (url-hexify-string (directory-file-name (expand-file-name path))
                              lsp-ltex-plus--uri-path-allowed-chars)))
-
-(defun lsp-ltex-plus--uri-to-path (uri)
-  "Return the local file name a `file://' URI names.
-The inverse of `lsp-ltex-plus--path-to-uri'.  A URI with any other
-scheme is returned with its scheme stripped, which is enough for the
-synthetic identities file-less buffers carry."
-  (let* ((path (decode-coding-string
-                (url-unhex-string (url-filename (url-generic-parse-url uri)))
-                'utf-8)))
-    (if (and (eq system-type 'windows-nt)
-             (string-match-p "\\`/[A-Za-z]:" path))
-        (substring path 1)
-      path)))
 
 ;;;; -- The connection object --------------------------------------------------
 

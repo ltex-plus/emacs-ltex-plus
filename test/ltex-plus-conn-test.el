@@ -19,14 +19,6 @@
 
 ;;;; -- URIs -------------------------------------------------------------------
 
-(ert-deftest ltex-plus-conn-test-uri-round-trips-awkward-names ()
-  "A file name with spaces and non-ASCII survives the trip to a URI and back.
-The buffer the server asks about is looked up by the name that comes
-back, so the round trip has to be exact."
-  (dolist (path '("/tmp/plain.md" "/tmp/with space/ü.tex" "/tmp/a+b/c#d.org"))
-    (should (equal (lsp-ltex-plus--uri-to-path (lsp-ltex-plus--path-to-uri path))
-                   path))))
-
 (ert-deftest ltex-plus-conn-test-uri-escapes-the-way-other-clients-do ()
   "The URI form is the one the rest of the LSP world produces."
   (should (equal (lsp-ltex-plus--path-to-uri "/tmp/with space/ü.tex")

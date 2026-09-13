@@ -80,11 +80,11 @@ on a running server."
 ;; describe a text the buffer no longer holds.
 
 (defun lsp-ltex-plus--edit-buffer (uri)
-  "Return the buffer an edit for URI applies to.
-The buffer open under URI, or failing that one visiting the file it
-names; signals a `user-error' when there is neither."
+  "Return the buffer open under URI, which an edit for URI applies to.
+Signals a `user-error' when there is none: the buffer was killed since
+the server looked at it, and any other buffer on the same file holds a
+text the server never saw."
   (or (lsp-ltex-plus--buffer-for-uri uri)
-      (get-file-buffer (lsp-ltex-plus--uri-to-path uri))
       (user-error "[lsp-ltex-plus] The edit is for %s, which no buffer holds" uri)))
 
 (defun lsp-ltex-plus--text-edits-by-document (edit)
