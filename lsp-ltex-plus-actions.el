@@ -300,19 +300,61 @@ is kept."
 
 ;;;; -- The menu -----------------------------------------------------------------
 
+;; The menu lists the narrowest remedy first and the broadest last: a
+;; replacement changes one word; adding it to the dictionary accepts it
+;; everywhere; hiding a false positive silences one finding; disabling a
+;; rule silences a whole class of them.  The server sends its actions in
+;; an order of its own, and completion frameworks sort candidates unless
+;; told not to, so both are overridden: the actions are sorted here, and
+;; the completion table declares that its order is the order to show.
+
+(defconst lsp-ltex-plus--action-order
+  '(nil "_ltex.addToDictionary" "_ltex.hideFalsePositives" "_ltex.disableRules")
+  "The order actions are offered in, by the command each carries.
+Nil stands for an action with no command, a replacement.  A command not
+listed comes after all of these.")
+
+(defun lsp-ltex-plus--action-rank (action)
+  "Return ACTION's place in `lsp-ltex-plus--action-order', lower first."
+  (let ((command (plist-get (lsp-ltex-plus--suggestion-command action) :command)))
+    (or (seq-position lsp-ltex-plus--action-order command #'equal)
+        (length lsp-ltex-plus--action-order))))
+
+(defun lsp-ltex-plus--order-actions (actions)
+  "Return ACTIONS as a list, sorted by `lsp-ltex-plus--action-rank'.
+The sort is stable, so actions of one rank keep the server's order:
+the replacements come as the server ranked them, the likeliest first."
+  (sort (append actions nil)
+        (lambda (a b) (< (lsp-ltex-plus--action-rank a) (lsp-ltex-plus--action-rank b)))))
+
 (defun lsp-ltex-plus--actions-here ()
-  "Return the code actions for the region, or for point, split where asked.
+  "Return the code actions for the region, or for point, split and ordered.
 The region when it is active, else the diagnostic at point; either way
 what the server offers, with this package's own suggestions expanded
-by `lsp-ltex-plus--expand-suggestions'."
+by `lsp-ltex-plus--expand-suggestions' and the whole put in the order
+of `lsp-ltex-plus--action-order'."
   (let ((beg (if (use-region-p) (region-beginning) (point)))
         (end (if (use-region-p) (region-end) (point))))
-    (lsp-ltex-plus--expand-suggestions (lsp-ltex-plus--request-code-actions beg end))))
+    (lsp-ltex-plus--order-actions
+     (lsp-ltex-plus--expand-suggestions (lsp-ltex-plus--request-code-actions beg end)))))
+
+(defun lsp-ltex-plus--completion-table (labels)
+  "Return a completion table offering LABELS in the order given.
+Its metadata tells the completion framework not to sort them, which
+the default `completing-read' and vertico alike would otherwise do,
+alphabetically or by history."
+  (lambda (string predicate action)
+    (if (eq action 'metadata)
+        '(metadata (category . lsp-ltex-plus-action)
+                   (display-sort-function . identity)
+                   (cycle-sort-function . identity))
+      (complete-with-action action labels string predicate))))
 
 (defun lsp-ltex-plus--choose-action (actions)
   "Ask the user to pick one of ACTIONS by title, and return it.
-Two actions with the same title are told apart by a number, so the
-choice is never ambiguous and every action stays reachable."
+Offered in the order given.  Two actions with the same title are told
+apart by a number, so the choice is never ambiguous and every action
+stays reachable."
   (let ((seen (make-hash-table :test #'equal))
         (candidates nil))
     (dolist (action actions)
@@ -321,10 +363,10 @@ choice is never ambiguous and every action stays reachable."
              (label (if (= count 1) title (format "%s (%d)" title count))))
         (push (cons label action) candidates)))
     (setq candidates (nreverse candidates))
-    (let ((completion-extra-properties '(:category lsp-ltex-plus-action)))
-      (cdr (assoc (completing-read "LTeX+ suggestion: " (mapcar #'car candidates)
-                                   nil t)
-                  candidates)))))
+    (cdr (assoc (completing-read "LTeX+ suggestion: "
+                                 (lsp-ltex-plus--completion-table (mapcar #'car candidates))
+                                 nil t)
+                candidates))))
 
 ;;;###autoload
 (defun lsp-ltex-plus-actions ()

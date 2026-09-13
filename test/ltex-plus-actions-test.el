@@ -210,10 +210,41 @@ Applying the first one first would shift the second's positions."
   `(let ((offered nil))
      (cl-letf (((symbol-function 'completing-read)
                 (lambda (_prompt collection &rest _)
-                  (setq offered (append collection nil))
+                  (setq offered (all-completions "" collection))
                   ,title)))
        (ignore offered)
        ,@body)))
+
+(ert-deftest ltex-plus-actions-test-the-menu-runs-from-narrowest-to-broadest-remedy ()
+  "Fixes first, then add to dictionary, hide false positive, disable rule.
+The server sends its actions in an order of its own -- here the reverse
+-- and the menu puts the remedy that changes least at the top."
+  (ltex-plus-actions-test--with-checked-buffer buffer "Hello teh world.\n"
+    (let ((ltex-plus-fake-code-actions
+           (vector (ltex-plus-test-suggestion "_ltex.disableRules" "Disable rule"
+                                              :ruleIds '("MORFOLOGIK_RULE_EN_US"))
+                   (ltex-plus-test-suggestion "_ltex.hideFalsePositives" "Hide false positive"
+                                              :falsePositives '("{}"))
+                   (ltex-plus-test-suggestion "_ltex.addToDictionary" "Add 'teh' to dictionary"
+                                              :words '("teh"))
+                   (ltex-plus-actions-test--fix-for buffer))))
+      (with-current-buffer buffer
+        (goto-char 8)
+        (ltex-plus-actions-test--choosing "Use 'the'"
+          (lsp-ltex-plus-actions)
+          (should (equal offered '("Use 'the'" "Add 'teh' to dictionary"
+                                   "Hide false positive" "Disable rule"))))))))
+
+(ert-deftest ltex-plus-actions-test-the-menu-tells-completion-not-to-sort ()
+  "The completion table declares its own order as the one to show.
+Without that, `completing-read' sorts alphabetically and vertico by
+history, and the order above would survive only by luck."
+  (let ((table (lsp-ltex-plus--completion-table '("b" "a"))))
+    (should (equal (all-completions "" table) '("b" "a")))
+    (let ((metadata (completion-metadata "" table nil)))
+      (should (eq (completion-metadata-get metadata 'display-sort-function) #'identity))
+      (should (eq (completion-metadata-get metadata 'cycle-sort-function) #'identity))
+      (should (eq (completion-metadata-get metadata 'category) 'lsp-ltex-plus-action)))))
 
 (ert-deftest ltex-plus-actions-test-choosing-a-replacement-applies-it ()
   "The menu offers the server's titles, and the chosen replacement is applied."
