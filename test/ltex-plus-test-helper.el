@@ -179,8 +179,7 @@ developer's real dictionary, which the sandbox already rules out."
         lsp-ltex-plus--enabled-rules-stored nil
         lsp-ltex-plus--disabled-rules-stored nil
         lsp-ltex-plus--hidden-false-positives-stored nil)
-  (clrhash lsp-ltex-plus--project-file-cache)
-  (lsp-ltex-plus--recompute-merged))
+  (clrhash lsp-ltex-plus--project-file-cache))
 
 ;;;; -- Throwaway project trees ------------------------------------------------
 

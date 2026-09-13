@@ -241,7 +241,7 @@ Applying the first one first would shift the second's positions."
         (ltex-plus-actions-test--choosing "Add 'teh' to dictionary"
           (lsp-ltex-plus-actions)
           (should (equal offered '("Use 'the'" "Add 'teh' to dictionary")))))
-      (should (equal (ltex-plus-test-words lsp-ltex-plus--dictionary-merged) '("teh")))
+      (should (equal (ltex-plus-test-words (lsp-ltex-plus--global-plist 'dictionary)) '("teh")))
       (ltex-plus-fake-wait-for
        (lambda () (> (length (ltex-plus-fake-received 'workspace/didChangeConfiguration))
                      pushes))))))
@@ -291,7 +291,7 @@ Applying the first one first would shift the second's positions."
         (cl-letf (((symbol-function 'completing-read)
                    (lambda (&rest _) (error "No menu should appear"))))
           (lsp-ltex-plus-add-to-dictionary)))
-      (should (equal (ltex-plus-test-words lsp-ltex-plus--dictionary-merged) '("teh"))))))
+      (should (equal (ltex-plus-test-words (lsp-ltex-plus--global-plist 'dictionary)) '("teh"))))))
 
 (ert-deftest ltex-plus-actions-test-add-to-dictionary-still-asks-where ()
   "With both destinations on offer, the shortcut asks which, and nothing else."
@@ -320,7 +320,7 @@ Applying the first one first would shift the second's positions."
           (should (equal (ltex-plus-test-words
                           (ltex-plus-test-read-file (project-file ".ltex/words.eld")))
                          '("teh")))
-          (should-not (ltex-plus-test-words lsp-ltex-plus--dictionary-merged)))))))
+          (should-not (ltex-plus-test-words (lsp-ltex-plus--global-plist 'dictionary))))))))
 
 ;;;; -- The keymap ---------------------------------------------------------------
 

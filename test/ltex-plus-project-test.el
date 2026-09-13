@@ -43,8 +43,8 @@ rather than as one list happening to be empty."
   (declare (indent 0) (debug t))
   `(progn
      (ltex-plus-test-reset)
-     (setq lsp-ltex-plus--dictionary-merged '(:en-US ["everywhere"])
-           lsp-ltex-plus--disabled-rules-merged '(:en-US ["GLOBAL_RULE"]))
+     (setq lsp-ltex-plus-dictionary '(:en-US ["everywhere"])
+           lsp-ltex-plus-disabled-rules '(:en-US ["GLOBAL_RULE"]))
      (ltex-plus-test-with-project ltex-plus-project-test--spec
        (let ((outside-root (file-name-as-directory
                             (make-temp-file "ltex-plus-test-outside-" t))))
@@ -156,7 +156,7 @@ Emacs process happens to be sitting in."
   (ltex-plus-project-test--in-project
     (should (equal (with-current-buffer top
                      (lsp-ltex-plus--effective-plist 'enabled-rules))
-                   lsp-ltex-plus--enabled-rules-merged))))
+                   (lsp-ltex-plus--global-plist 'enabled-rules)))))
 
 ;;;; -- Both replies agree -----------------------------------------------------
 

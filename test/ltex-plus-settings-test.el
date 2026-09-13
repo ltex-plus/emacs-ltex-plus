@@ -8,7 +8,7 @@
 
 ;; The three-tier storage the four language-keyed settings use: a pristine
 ;; defcustom the user seeds from `:custom', a `-stored' mirror of the file
-;; on disk, and the `-merged' union the server is shown.
+;; on disk, and the union of the two the server is shown.
 ;;
 ;; The invariant worth guarding is that the defcustom is never written to.
 ;; If a code action ever mutated it, removing a word from `:custom' would
@@ -121,14 +121,25 @@ The server sends \"de-DE\"; the file stores `:de-DE'."
 
 ;;;; -- The pristine-defcustom invariant ---------------------------------------
 
-(ert-deftest ltex-plus-settings-test-merged-is-the-union ()
-  "`-merged' is the defcustom and the file, both."
+(ert-deftest ltex-plus-settings-test-the-global-list-is-the-union ()
+  "The server is shown the defcustom and the file, both."
   (ltex-plus-test-reset)
   (setq lsp-ltex-plus-dictionary '(:en-US ["from-custom"])
         lsp-ltex-plus--dictionary-stored '(:en-US ["from-file"]))
-  (lsp-ltex-plus--recompute-merged)
-  (should (equal (ltex-plus-test-words lsp-ltex-plus--dictionary-merged)
+  (should (equal (ltex-plus-test-words (lsp-ltex-plus--global-plist 'dictionary))
                  '("from-custom" "from-file"))))
+
+(ert-deftest ltex-plus-settings-test-a-changed-defcustom-is-live ()
+  "A `setq' of a list setting is in force at once, with nothing to reload.
+The merge is made when the server asks; there is no cache of it that a
+change to the defcustom could leave stale."
+  (ltex-plus-test-reset)
+  (setq lsp-ltex-plus-dictionary '(:en-US ["first"]))
+  (should (equal (ltex-plus-test-words (lsp-ltex-plus--effective-plist 'dictionary))
+                 '("first")))
+  (setq lsp-ltex-plus-dictionary '(:en-US ["second"]))
+  (should (equal (ltex-plus-test-words (lsp-ltex-plus--effective-plist 'dictionary))
+                 '("second"))))
 
 (ert-deftest ltex-plus-settings-test-addition-never-touches-the-defcustom ()
   "A saved addition lands in the mirror and the file, never in `:custom'.
@@ -137,7 +148,6 @@ This is what keeps the two sources independent: a word deleted from
 variable has been written to behind the user's back."
   (ltex-plus-test-reset)
   (setq lsp-ltex-plus-dictionary '(:en-US ["from-custom"]))
-  (lsp-ltex-plus--recompute-merged)
   (ltex-plus-test-with-project '(("doc.md" . "text\n"))
     (with-current-buffer (ltex-plus-test-visit
                           (expand-file-name "doc.md" ltex-plus-test-root))
@@ -145,7 +155,7 @@ variable has been written to behind the user's back."
   (should (equal lsp-ltex-plus-dictionary '(:en-US ["from-custom"])))
   (should (equal (ltex-plus-test-words lsp-ltex-plus--dictionary-stored)
                  '("accepted")))
-  (should (equal (ltex-plus-test-words lsp-ltex-plus--dictionary-merged)
+  (should (equal (ltex-plus-test-words (lsp-ltex-plus--global-plist 'dictionary))
                  '("from-custom" "accepted")))
   (should (equal (ltex-plus-test-words
                   (ltex-plus-test-read-file lsp-ltex-plus-dictionary-file))
@@ -265,13 +275,14 @@ Renaming would silently discard whichever file lost."
 ;;;; -- The reload command -----------------------------------------------------
 
 (ert-deftest ltex-plus-settings-test-reload-rereads-the-files ()
-  "A hand-edited global file is read back into the merged view by the reload."
+  "A hand-edited global file is read back into the global list by the reload."
   (ltex-plus-test-reset)
   (lsp-ltex-plus--save-plist '(:en-US ["Flimberry"]) lsp-ltex-plus-dictionary-file)
-  (should-not (ltex-plus-test-words lsp-ltex-plus--dictionary-merged))
+  (should-not (ltex-plus-test-words (lsp-ltex-plus--global-plist 'dictionary)))
   (let ((inhibit-message t))
     (lsp-ltex-plus-reload-settings))
-  (should (equal (ltex-plus-test-words lsp-ltex-plus--dictionary-merged) '("Flimberry"))))
+  (should (equal (ltex-plus-test-words (lsp-ltex-plus--global-plist 'dictionary))
+                 '("Flimberry"))))
 
 (ert-deftest ltex-plus-settings-test-reload-tells-the-server ()
   "With a server running, the reload pushes the configuration again.
@@ -292,7 +303,8 @@ edited file reaches the next check."
   (lsp-ltex-plus--save-plist '(:en-US ["once"]) lsp-ltex-plus-dictionary-file)
   (lsp-ltex-plus--setup)
   (lsp-ltex-plus--setup)
-  (should (equal (ltex-plus-test-words lsp-ltex-plus--dictionary-merged) '("once"))))
+  (should (equal (ltex-plus-test-words (lsp-ltex-plus--global-plist 'dictionary))
+                 '("once"))))
 
 ;;;; -- The server version guard -----------------------------------------------
 

@@ -155,7 +155,7 @@ When the client advertises the custom capability the server takes the
 four language-keyed settings from here alone, so a missing field means
 the document is checked against nothing."
   (ltex-plus-test-reset)
-  (setq lsp-ltex-plus--dictionary-merged '(:en-US ["global-word"]))
+  (setq lsp-ltex-plus-dictionary '(:en-US ["global-word"]))
   (ltex-plus-scope-test--with-documents
     (let ((reply (lsp-ltex-plus--answer-workspace-specific-configuration
                   (list :items (vector (list :scopeUri (lsp-ltex-plus--buffer-uri german))
@@ -173,7 +173,7 @@ the document is checked against nothing."
 The other document, in a root with no list of its own, gets the global
 list alone; a dead document gets the global list too."
   (ltex-plus-test-reset)
-  (setq lsp-ltex-plus--dictionary-merged '(:en-US ["global-word"]))
+  (setq lsp-ltex-plus-dictionary '(:en-US ["global-word"]))
   (ltex-plus-fake-with-connection
     (ltex-plus-test-with-project
         '((".dir-locals.el"

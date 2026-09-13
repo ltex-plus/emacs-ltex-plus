@@ -576,59 +576,27 @@ by `lsp-ltex-plus--comint-teardown'.  Gates the submit re-sync and
 tear-down so they no-op in buffers that never opted in.")
 
 (defvar lsp-ltex-plus--dictionary-stored nil
-  "Dictionary plist loaded from on-disk file.
-File location: `lsp-ltex-plus-dictionary-file'.  Mutated by the
-_ltex.addToDictionary code action and persisted back to the file.
-Merged with the pristine defcustom `lsp-ltex-plus-dictionary' into
-`lsp-ltex-plus--dictionary-merged' for the server.")
+  "The words accepted through suggestions, as read from and written to disk.
+The in-memory mirror of `lsp-ltex-plus-dictionary-file'.  Kept apart from
+the defcustom `lsp-ltex-plus-dictionary' so that a `:custom' value is
+never written to disk; the server is shown the merge of the two, made
+when it asks (see `lsp-ltex-plus--global-plist').")
 
 (defvar lsp-ltex-plus--enabled-rules-stored nil
-  "Enabled-rules plist loaded from on-disk file.
-File location: `lsp-ltex-plus-enabled-rules-file'.  Kept separate from
-the user-facing defcustom `lsp-ltex-plus-enabled-rules' so `:custom'
-values never get written to disk; the server sees the merge of the two
-via `lsp-ltex-plus--enabled-rules-merged'.")
+  "The rules enabled by hand-editing the file, as read from disk.
+The in-memory mirror of `lsp-ltex-plus-enabled-rules-file'; no
+suggestion writes here.  Merged with `lsp-ltex-plus-enabled-rules' when
+the server asks.")
 
 (defvar lsp-ltex-plus--disabled-rules-stored nil
-  "Disabled-rules plist loaded from on-disk file.
-File location: `lsp-ltex-plus-disabled-rules-file'.  Mutated by the
-_ltex.disableRules code action and persisted back to the file.  Merged
-with the pristine defcustom `lsp-ltex-plus-disabled-rules' into
-`lsp-ltex-plus--disabled-rules-merged' for the server.")
+  "The rules disabled through suggestions, as read from and written to disk.
+The in-memory mirror of `lsp-ltex-plus-disabled-rules-file'.  Merged
+with `lsp-ltex-plus-disabled-rules' when the server asks.")
 
 (defvar lsp-ltex-plus--hidden-false-positives-stored nil
-  "Hidden-false-positives plist loaded from on-disk file.
-File location: `lsp-ltex-plus-hidden-false-positives-file'.  Mutated by
-the _ltex.hideFalsePositives code action and persisted back.  Merged
-with the pristine defcustom `lsp-ltex-plus-hidden-false-positives' into
-`lsp-ltex-plus--hidden-false-positives-merged' for the server.")
-
-(defvar lsp-ltex-plus--dictionary-merged nil
-  "Merge of custom-defined words and on-disk-defined words.
-Custom-defined words are stored in `lsp-ltex-plus-dictionary', while
-on-disk-defined words are stored in `lsp-ltex-plus--dictionary-stored'.
-Read by the server; recomputed whenever either source changes.")
-
-(defvar lsp-ltex-plus--enabled-rules-merged nil
-  "Merge of custom-defined rules and on-disk-defined rules.
-Custom-defined rules are stored in `lsp-ltex-plus-enabled-rules', while
-on-disk-defined rules are stored in
-`lsp-ltex-plus--enabled-rules-stored'.  Read by the server; recomputed
-whenever either source changes.")
-
-(defvar lsp-ltex-plus--disabled-rules-merged nil
-  "Merge of custom-defined rules and on-disk-defined rules.
-Custom-defined rules are stored in `lsp-ltex-plus-disabled-rules', while
-on-disk-defined rules are stored in
-`lsp-ltex-plus--disabled-rules-stored'.  Read by the server; recomputed
-whenever either source changes.")
-
-(defvar lsp-ltex-plus--hidden-false-positives-merged nil
-  "Merge of custom-defined false positives and on-disk-defined ones.
-Custom-defined false positives are stored in
-`lsp-ltex-plus-hidden-false-positives', while on-disk-defined ones are
-stored in `lsp-ltex-plus--hidden-false-positives-stored'.  Read by the
-server; recomputed whenever either source changes.")
+  "The false positives hidden through suggestions, kept on disk.
+The in-memory mirror of `lsp-ltex-plus-hidden-false-positives-file'.
+Merged with `lsp-ltex-plus-hidden-false-positives' when the server asks.")
 
 (defvar lsp-ltex-plus--project-file-cache (make-hash-table :test #'equal)
   "Cache of project settings files: absolute path -> (MTIME . PLIST).
@@ -783,43 +751,6 @@ Items in vectors are merged and deduplicated using `string=`."
                (setq res (plist-put res key merged))))
     res))
 
-(defun lsp-ltex-plus--load-external-settings ()
-  "Load external settings from disk and recompute merged views.
-Reads each of the four on-disk plist files into its `-stored'
-variable, then rebuilds the `-merged' variables by combining the
-stored values with the pristine defcustoms.  The defcustoms
-themselves are never mutated."
-  (setq lsp-ltex-plus--dictionary-stored
-        (lsp-ltex-plus--load-plist lsp-ltex-plus-dictionary-file))
-  (setq lsp-ltex-plus--enabled-rules-stored
-        (lsp-ltex-plus--load-plist lsp-ltex-plus-enabled-rules-file))
-  (setq lsp-ltex-plus--disabled-rules-stored
-        (lsp-ltex-plus--load-plist lsp-ltex-plus-disabled-rules-file))
-  (setq lsp-ltex-plus--hidden-false-positives-stored
-        (lsp-ltex-plus--load-plist lsp-ltex-plus-hidden-false-positives-file))
-  ;; Project files carry their own modification-time check, so this only
-  ;; matters for an edit that left the time untouched — but a reload is
-  ;; meant to be the blunt instrument that always works.
-  (clrhash lsp-ltex-plus--project-file-cache)
-  (lsp-ltex-plus--recompute-merged))
-
-(defun lsp-ltex-plus--recompute-merged ()
-  "Rebuild the four `-merged' plists from defcustoms + `-stored' values.
-Called after any change to a `-stored' variable (e.g. a code-action
-write) and at the end of `lsp-ltex-plus--load-external-settings'."
-  (setq lsp-ltex-plus--dictionary-merged
-        (lsp-ltex-plus--merge-plists lsp-ltex-plus-dictionary
-                                     lsp-ltex-plus--dictionary-stored))
-  (setq lsp-ltex-plus--enabled-rules-merged
-        (lsp-ltex-plus--merge-plists lsp-ltex-plus-enabled-rules
-                                     lsp-ltex-plus--enabled-rules-stored))
-  (setq lsp-ltex-plus--disabled-rules-merged
-        (lsp-ltex-plus--merge-plists lsp-ltex-plus-disabled-rules
-                                     lsp-ltex-plus--disabled-rules-stored))
-  (setq lsp-ltex-plus--hidden-false-positives-merged
-        (lsp-ltex-plus--merge-plists lsp-ltex-plus-hidden-false-positives
-                                     lsp-ltex-plus--hidden-false-positives-stored)))
-
 (defun lsp-ltex-plus--add-to-plist (plist-sym file-path lang items)
   "Add ITEMS for LANG to the plist stored in PLIST-SYM and save to FILE-PATH."
   (lsp-ltex-plus--log "Adding items for %s to %s: %S" lang (symbol-name plist-sym) items)
@@ -927,25 +858,25 @@ keyword keys, vectors of strings as values, e.g.
 
 (defconst lsp-ltex-plus--setting-kinds
   '((dictionary
-     :merged        lsp-ltex-plus--dictionary-merged
+     :custom        lsp-ltex-plus-dictionary
      :stored        lsp-ltex-plus--dictionary-stored
      :global-file lsp-ltex-plus-dictionary-file
      :project-file  lsp-ltex-plus-project-dictionary-file
      :command       "_ltex.addToDictionary")
     (enabled-rules
-     :merged        lsp-ltex-plus--enabled-rules-merged
+     :custom        lsp-ltex-plus-enabled-rules
      :stored        lsp-ltex-plus--enabled-rules-stored
      :global-file lsp-ltex-plus-enabled-rules-file
      :project-file  lsp-ltex-plus-project-enabled-rules-file
      :command       nil)
     (disabled-rules
-     :merged        lsp-ltex-plus--disabled-rules-merged
+     :custom        lsp-ltex-plus-disabled-rules
      :stored        lsp-ltex-plus--disabled-rules-stored
      :global-file lsp-ltex-plus-disabled-rules-file
      :project-file  lsp-ltex-plus-project-disabled-rules-file
      :command       "_ltex.disableRules")
     (hidden-false-positives
-     :merged        lsp-ltex-plus--hidden-false-positives-merged
+     :custom        lsp-ltex-plus-hidden-false-positives
      :stored        lsp-ltex-plus--hidden-false-positives-stored
      :global-file lsp-ltex-plus-hidden-false-positives-file
      :project-file  lsp-ltex-plus-project-hidden-false-positives-file
@@ -953,7 +884,7 @@ keyword keys, vectors of strings as values, e.g.
   "The four language-keyed settings, by kind.
 Each entry maps a kind to the variables behind it:
 
-  :merged         the global value the server is shown
+  :custom         the defcustom, the user's own list, never written to
   :stored         the in-memory mirror of the global file
   :global-file  the global file under `user-emacs-directory'
   :project-file   the setting naming a project's own file, if it has one
@@ -963,6 +894,19 @@ Each entry maps a kind to the variables behind it:
 (defun lsp-ltex-plus--kind-get (kind property)
   "Return PROPERTY of KIND from `lsp-ltex-plus--setting-kinds'."
   (plist-get (alist-get kind lsp-ltex-plus--setting-kinds) property))
+
+(defun lsp-ltex-plus--load-external-settings ()
+  "Read the four global files from disk into their `-stored' mirrors.
+The defcustoms are never touched; the server is shown the merge of a
+defcustom and its mirror when it asks."
+  (pcase-dolist (`(,kind . ,_) lsp-ltex-plus--setting-kinds)
+    (set (lsp-ltex-plus--kind-get kind :stored)
+         (lsp-ltex-plus--load-plist
+          (symbol-value (lsp-ltex-plus--kind-get kind :global-file)))))
+  ;; Project files carry their own modification-time check, so this only
+  ;; matters for an edit that left the time untouched — but a reload is
+  ;; meant to be the blunt instrument that always works.
+  (clrhash lsp-ltex-plus--project-file-cache))
 
 (defun lsp-ltex-plus--kind-for-command (command)
   "Return the settings kind COMMAND writes to, or nil if it writes to none.
@@ -1006,12 +950,20 @@ relative value resolves against the directory holding the
         (puthash path (cons mtime plist) lsp-ltex-plus--project-file-cache)
         plist))))
 
+(defun lsp-ltex-plus--global-plist (kind)
+  "Return KIND's global list: the user's defcustom merged with the file's.
+Made when asked rather than cached, so a `setq' of the defcustom is in
+force at the next check with nothing to refresh.  KIND is a key of
+`lsp-ltex-plus--setting-kinds'."
+  (lsp-ltex-plus--merge-plists
+   (symbol-value (lsp-ltex-plus--kind-get kind :custom))
+   (symbol-value (lsp-ltex-plus--kind-get kind :stored))))
+
 (defun lsp-ltex-plus--effective-plist (kind)
   "Return KIND as the server should see it for the document in this buffer.
-The global value — the user's defcustom merged with the file under
-`user-emacs-directory' — extended with this project's file, if it has
-one.  KIND is a key of `lsp-ltex-plus--setting-kinds'."
-  (let ((global (symbol-value (lsp-ltex-plus--kind-get kind :merged)))
+The global list, `lsp-ltex-plus--global-plist', extended with this
+project's file, if it has one."
+  (let ((global (lsp-ltex-plus--global-plist kind))
         (file (lsp-ltex-plus--project-file-for kind)))
     (if file
         (lsp-ltex-plus--merge-plists
@@ -1108,10 +1060,10 @@ so a suggestion is never a dead end."
 
 (defun lsp-ltex-plus--save-addition (kind lang items command)
   "Add ITEMS for LANG to KIND's list, in the file COMMAND's target names.
-Writing to the global file goes through the `-stored' mirror and
-rebuilds the merged views, exactly as before.  Writing to a project file
-updates the file and refreshes its cache entry, so the next check sees
-the new entry without waiting for a modification-time comparison."
+Writing to the global file goes through the `-stored' mirror.  Writing
+to a project file updates the file and refreshes its cache entry, so the
+next check sees the new entry without waiting for a modification-time
+comparison."
   (if (eq (lsp-ltex-plus--addition-target kind command) 'project)
       (let* ((path (lsp-ltex-plus--project-file-for kind))
              (key (intern (concat ":" lang)))
@@ -1126,8 +1078,7 @@ the new entry without waiting for a modification-time comparison."
                  lsp-ltex-plus--project-file-cache))
     (lsp-ltex-plus--add-to-plist (lsp-ltex-plus--kind-get kind :stored)
                                  (symbol-value (lsp-ltex-plus--kind-get kind :global-file))
-                                 lang items)
-    (lsp-ltex-plus--recompute-merged)))
+                                 lang items)))
 
 ;;;; -- Values handed to the server ---------------------------------------------
 
