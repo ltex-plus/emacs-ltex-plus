@@ -54,17 +54,14 @@
   ;; and t for programming languages (opt-in via
   ;; `lsp-ltex-plus-check-programming-languages').
   ;;
-  ;; Entries for modes that ship with newer Emacs (mainly tree-sitter modes
-  ;; introduced in 29.1 / 30.1) are appended below via per-symbol `fboundp'
-  ;; guards, so a mode is picked up when the running Emacs has it and
-  ;; skipped when it does not.  The floor is 29.1, so the 29.1 modes are in
-  ;; practice always present; their guards are kept because `package-lint'
-  ;; asks for one on any symbol introduced after the declared minimum, and
-  ;; because a guard costs nothing to leave in place.
+  ;; The entries are data: a mode the running Emacs does not have -- a
+  ;; third-party mode that is not installed -- is a symbol nothing ever
+  ;; matches, and costs nothing.  The tree-sitter modes Emacs 29.1 ships
+  ;; are listed like any other; the four that arrived with 30.1 are added
+  ;; below behind `fboundp', not because the table needs it but because
+  ;; `package-lint' asks for a guard on any symbol newer than the declared
+  ;; Emacs floor.
   (append
-   ;; Always available (Emacs 29.1+, or long-standing third-party MELPA
-   ;; packages).
-   ;;
    ;; Markup languages (PROGRAMMING-P = nil)
    '((asciidoc-mode          "asciidoc"         nil)
      (bibtex-mode            "bibtex"           nil)
@@ -91,31 +88,39 @@
      (typst-mode             "typst"            nil)
      (typst-ts-mode          "typst"            nil)
      ;; Programming languages (PROGRAMMING-P = t)
-     (c-mode                 "c"                t)
+     (bash-ts-mode           "shellscript"      t)
      (c++-mode               "cpp"              t)
+     (c++-ts-mode            "cpp"              t)
+     (c-mode                 "c"                t)
+     (c-ts-mode              "c"                t)
      (clojure-mode           "clojure"          t)
      (clojure-ts-mode        "clojure"          t)
      (coffee-mode            "coffeescript"     t)
      (common-lisp-mode       "lisp"             t)
-     (emacs-lisp-mode        "elisp"            t)
      (cperl-mode             "perl"             t)
+     (csharp-mode            "csharp"           t)
+     (csharp-ts-mode         "csharp"           t)
      (dart-mode              "dart"             t)
      (dart-ts-mode           "dart"             t)
      (elixir-mode            "elixir"           t)
      (elm-mode               "elm"              t)
+     (emacs-lisp-mode        "elisp"            t)
      (erlang-mode            "erlang"           t)
      (ess-r-mode             "r"                t)
      (f90-mode               "fortran-modern"   t)
      (fortran-mode           "fortran-modern"   t)
      (fsharp-mode            "fsharp"           t)
      (go-mode                "go"               t)
+     (go-ts-mode             "go"               t)
      (groovy-mode            "groovy"           t)
      (haskell-mode           "haskell"          t)
      (haskell-ts-mode        "haskell"          t)
      (java-mode              "java"             t)
+     (java-ts-mode           "java"             t)
      (javascript-mode        "javascript"       t)
-     (js-mode                "javascript"       t)
      (js-jsx-mode            "javascriptreact"  t)
+     (js-mode                "javascript"       t)
+     (js-ts-mode             "javascript"       t)
      (js2-mode               "javascript"       t)
      (julia-mode             "julia"            t)
      (julia-ts-mode          "julia"            t)
@@ -130,43 +135,30 @@
      (powershell-mode        "powershell"       t)
      (puppet-mode            "puppet"           t)
      (python-mode            "python"           t)
+     (python-ts-mode         "python"           t)
      (raku-mode              "perl6"            t)
      (rjsx-mode              "javascriptreact"  t)
      (ruby-mode              "ruby"             t)
+     (ruby-ts-mode           "ruby"             t)
      (rust-mode              "rust"             t)
+     (rust-ts-mode           "rust"             t)
      (rustic-mode            "rust"             t)
      (scala-mode             "scala"            t)
      (sh-mode                "shellscript"      t)
      (sql-mode               "sql"              t)
      (swift-mode             "swift"            t)
      (swift-ts-mode          "swift"            t)
+     (tsx-ts-mode            "typescriptreact"  t)
      (typescript-mode        "typescript"       t)
+     (typescript-ts-mode     "typescript"       t)
      (typescript-tsx-mode    "typescriptreact"  t)
      (verilog-mode           "verilog"          t)
      (visual-basic-mode      "vb"               t))
-   ;; Modes added in newer Emacs releases (mostly tree-sitter built-ins).
-   ;; Each entry is gated by its own `fboundp' check, so it appears when
-   ;; the mode is available (built-in on Emacs 29.1+/30.1+, or third-party
-   ;; on older Emacs) and stays silent otherwise.  The same idiom is what
-   ;; `package-lint' expects for any reference to a symbol added after the
-   ;; declared minimum-Emacs floor.
-   (when (fboundp 'bash-ts-mode)       '((bash-ts-mode       "shellscript"      t)))
-   (when (fboundp 'c-ts-mode)          '((c-ts-mode          "c"                t)))
-   (when (fboundp 'c++-ts-mode)        '((c++-ts-mode        "cpp"              t)))
-   (when (fboundp 'csharp-mode)        '((csharp-mode        "csharp"           t)))
-   (when (fboundp 'csharp-ts-mode)     '((csharp-ts-mode     "csharp"           t)))
-   (when (fboundp 'elixir-ts-mode)     '((elixir-ts-mode     "elixir"           t)))
-   (when (fboundp 'go-ts-mode)         '((go-ts-mode         "go"               t)))
-   (when (fboundp 'html-ts-mode)       '((html-ts-mode       "html"             nil)))
-   (when (fboundp 'java-ts-mode)       '((java-ts-mode       "java"             t)))
-   (when (fboundp 'js-ts-mode)         '((js-ts-mode         "javascript"       t)))
-   (when (fboundp 'lua-ts-mode)        '((lua-ts-mode        "lua"              t)))
-   (when (fboundp 'php-ts-mode)        '((php-ts-mode        "php"              t)))
-   (when (fboundp 'python-ts-mode)     '((python-ts-mode     "python"           t)))
-   (when (fboundp 'ruby-ts-mode)       '((ruby-ts-mode       "ruby"             t)))
-   (when (fboundp 'rust-ts-mode)       '((rust-ts-mode       "rust"             t)))
-   (when (fboundp 'tsx-ts-mode)        '((tsx-ts-mode        "typescriptreact"  t)))
-   (when (fboundp 'typescript-ts-mode) '((typescript-ts-mode "typescript"       t))))
+   ;; Emacs 30.1 tree-sitter modes; see the comment above.
+   (when (fboundp 'elixir-ts-mode) '((elixir-ts-mode "elixir"  t)))
+   (when (fboundp 'html-ts-mode) '((html-ts-mode   "html"    nil)))
+   (when (fboundp 'lua-ts-mode) '((lua-ts-mode    "lua"     t)))
+   (when (fboundp 'php-ts-mode) '((php-ts-mode    "php"     t))))
   "List of (MAJOR-MODE LANGUAGE-ID PROGRAMMING-P) entries for lsp-ltex-plus.
 
 Each entry registers a major mode with its VS Code language identifier and
