@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+- **A flycheck checker.** `lsp-ltex-plus-diagnostics-provider` (default `flymake`) chooses the front-end that shows the server's diagnostics. Set to `flycheck`, turning the mode on selects the `lsp-ltex-plus` checker as the buffer's `flycheck-checker`, turning `flycheck-mode` on if need be, and turning the mode off puts the previous checker back. The checker reports the diagnostics the client already holds and asks flycheck to check again on every publish, so the errors follow the server as the flymake underlines do; ranges are exact, and the rule id is the error's id. Flycheck (32 or later) is not a dependency: chosen but absent, it falls back on flymake with one warning per session. Another checker for the same buffer is chained with `flycheck-add-next-checker`.
+
+### Changed
+- **CI fetches flycheck's latest release** before `make check`, so the checker's tests run there and a flycheck that changes under the checker shows up in CI rather than in a user's report. Locally, `LTEX_PLUS_FLYCHECK_DIR` names the directory holding `flycheck.el`; without it those tests report as skipped, with the reason.
+
 
 ## [1.0.0] - 2026-09-12
 

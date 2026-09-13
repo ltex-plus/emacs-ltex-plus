@@ -7,7 +7,7 @@
 <!-- ltex: dictionary+=jsonrpc -->
 <!-- ltex: dictionary+=flymake -->
 
-`lsp-ltex-plus` is a lightweight Emacs client for **LTeX+**, a powerful grammar and spell checker powered by [LanguageTool](https://languagetool.org/). It speaks the Language Server Protocol to the `ltex-ls-plus` server over the `jsonrpc` library that ships with Emacs, and shows the server's findings through flymake. It depends on nothing outside Emacs itself.
+`lsp-ltex-plus` is a lightweight Emacs client for **LTeX+**, a powerful grammar and spell checker powered by [LanguageTool](https://languagetool.org/). It speaks the Language Server Protocol to the `ltex-ls-plus` server over the `jsonrpc` library that ships with Emacs, and shows the server's findings through flymake — or through flycheck, if you prefer. It depends on nothing outside Emacs itself.
 
 *Developed and tested on Emacs 31.1. Requires Emacs 29.1 or later.*
 
@@ -47,7 +47,7 @@ LTeX+ can operate in two distinct ways, depending on your needs:
 
 ## Features
 
-- **Runs Beside Anything:** Diagnostics go through flymake, whose list of backends is buffer-local and takes many. LTeX+ sits beside whatever `texlab`, `pyright` or any other server installed — under `eglot` or `lsp-mode` alike — with no priority to arrange.
+- **Runs Beside Anything:** Diagnostics go through flymake, whose list of backends is buffer-local and takes many. LTeX+ sits beside whatever `texlab`, `pyright` or any other server installed — under `eglot` or `lsp-mode` alike — with no priority to arrange. Flycheck users can have the diagnostics there instead, with one setting.
 - **Smart Persistence:** Words you "add to dictionary" or rules you disable are automatically saved to your Emacs directory and remembered across sessions.
 - **Per-project Lists:** A project can keep its own dictionary and rule lists in its `.dir-locals.el`, merged with your global ones.
 - **Highly Configurable:** Easily switch languages, enable "picky" grammar rules, or connect to a premium LanguageTool account.
@@ -61,7 +61,7 @@ LTeX+ can operate in two distinct ways, depending on your needs:
 
 `lsp-ltex-plus` is fast. On an Apple M2, grammar checking a full-page Markdown or Org buffer completes in about **70 ms**, and a longer LaTeX document (around 15 KB) in about **150 ms** — both comfortably inside the threshold that feels instantaneous while typing.
 
-There is one knob on this side: `lsp-ltex-plus-change-delay` (default 0.5 s), how long after your last keystroke the buffer is sent to the server. Every edit restarts the wait, so a burst of typing is sent once, when it pauses. Lower it for quicker feedback; raise it on a slow machine or for very large files. The server re-checks the whole document on each send, so this is the whole trade-off. Flymake draws the underlines the moment the server's answer arrives; there is no second cadence to tune.
+There is one knob on this side: `lsp-ltex-plus-change-delay` (default 0.5 s), how long after your last keystroke the buffer is sent to the server. Every edit restarts the wait, so a burst of typing is sent once, when it pauses. Lower it for quicker feedback; raise it on a slow machine or for very large files. The server re-checks the whole document on each send, so this is the whole trade-off. Flymake, or flycheck, draws the underlines the moment the server's answer arrives; there is no second cadence to tune.
 
 A remote LanguageTool server is noticeably slower: pointed at the hosted service, the round-trip stretches to roughly **1–4 seconds** depending on network conditions and how busy the service is. That is the trade-off for Premium-only rules; the local backend is what most users will want for interactive writing.
 
@@ -76,7 +76,7 @@ Before using this package, you need:
 3.  **Java:** LTeX+ requires **Java 21** or higher. Most platform-specific releases of LTeX+ include a bundled Java runtime, so you don't necessarily need to install it separately. See [Java Runtime Configuration](#3-java-runtime-configuration) for details.
 4.  **Operating system:** Linux, macOS, and Windows are fully supported.
 
-No other Emacs package is required. `jsonrpc` and `flymake`, which the client is built on, are part of Emacs.
+No other Emacs package is required. `jsonrpc` and `flymake`, which the client is built on, are part of Emacs. Flycheck is optional: install it only if you want the diagnostics shown through it (see [Using flycheck instead of flymake](#using-flycheck-instead-of-flymake)).
 
 ## Server Installation
 
@@ -285,6 +285,10 @@ For a more robust setup using `use-package` and `straight.el`, you can use the f
   ;; Send the buffer to the server a little sooner after you stop typing.
   (lsp-ltex-plus-change-delay 0.3)
 
+  ;; Show the diagnostics through flycheck instead of flymake.  Flycheck
+  ;; must be installed; without it flymake is used and a warning says so.
+  ;; (lsp-ltex-plus-diagnostics-provider 'flycheck)
+
   ;; If you run flyspell globally, uncomment the next line to have it
   ;; switched off in the buffers LTeX+ checks: it flags macro names,
   ;; identifiers and proper nouns there, against a dictionary that is not
@@ -315,12 +319,13 @@ For a more robust setup using `use-package` and `straight.el`, you can use the f
 - `lsp-ltex-plus-additional-rules-enable-picky-rules`: Set to `t` if you want stricter grammar checks (e.g., passive voice detection).
 - `lsp-ltex-plus-change-delay`: Seconds of quiet after an edit before the buffer is sent for checking (default `0.5`).
 - `lsp-ltex-plus-actions-key`: The key that opens the menu of suggestions (default `C-c "`); `nil` binds nothing.
+- `lsp-ltex-plus-diagnostics-provider`: Which front-end shows the diagnostics, `flymake` (default) or `flycheck`.
 
 For the full list of available settings, see [Customization](#customization).
 
 ## Usage
 
-Once active, the server's findings appear as flymake diagnostics: underlines in the buffer, the message in the echo area when point is on one, and the usual `M-x flymake-show-buffer-diagnostics` list. Each message ends with the rule's id in brackets, which is what you need when deciding to disable a rule.
+Once active, the server's findings appear as flymake diagnostics: underlines in the buffer, the message in the echo area when point is on one, and the usual `M-x flymake-show-buffer-diagnostics` list. Each message ends with the rule's id in brackets, which is what you need when deciding to disable a rule. (Under flycheck they are flycheck errors, listed by `M-x flycheck-list-errors`; see [Using flycheck instead of flymake](#using-flycheck-instead-of-flymake).)
 
 One key does the work: `C-c "` runs `lsp-ltex-plus-actions`, which offers what the server suggests for the region, or for the diagnostic at point — replacements, *Add … to dictionary*, *Disable rule*, *Hide false positive* — and applies the one you pick. (The protocol calls these code actions; here they are simply actions, since they act on the server's suggestions and have nothing to do with code.) The key is `lsp-ltex-plus-actions-key`; `C-c $` is a natural choice if you let the package switch flyspell off, and `nil` binds nothing.
 
@@ -345,7 +350,26 @@ Everything else is called by name, since it is needed rarely:
 
 If the current major mode is not yet in `lsp-ltex-plus-major-modes`, you will be prompted for a [VS Code language identifier](https://code.visualstudio.com/docs/languages/identifiers) (press `RET` to accept the default `"plaintext"`). The mode is then registered and the grammar checker starts immediately. When called from a hook rather than interactively, `"plaintext"` is used silently without prompting.
 
-Turning the mode off touches only this client: the flymake backend is removed and its underlines cleared, and whatever other language server is checking the buffer keeps doing so. The mode is re-entrant — toggling it off and on repeatedly in the same buffer works cleanly.
+Turning the mode off touches only this client: the front-end is let go of — the flymake backend removed, or the flycheck checker deselected — and its underlines cleared, and whatever other language server is checking the buffer keeps doing so. The mode is re-entrant — toggling it off and on repeatedly in the same buffer works cleanly.
+
+### Using flycheck instead of flymake
+
+Flymake is the default because it is part of Emacs and takes any number of backends per buffer. If you run [flycheck](https://www.flycheck.org/) and would rather see LTeX+ there — one error list, one set of faces, `M-x flycheck-list-errors` — choose it as the front-end:
+
+```elisp
+(setq lsp-ltex-plus-diagnostics-provider 'flycheck)
+```
+
+Flycheck 32 or later must be installed; this package does not depend on it. When flycheck is chosen but cannot be loaded, flymake is used and a warning says so, once per session. The setting is read when the mode turns on in a buffer, so a buffer already being checked keeps its front-end until you toggle the mode off and on.
+
+With flycheck chosen, turning the mode on selects the `lsp-ltex-plus` checker as the buffer's `flycheck-checker` and turns `flycheck-mode` on if it is off; turning the mode off puts back whatever checker was selected before. Flycheck runs one checker per buffer, so a checker you also want in the same buffer — `tex-chktex` in a LaTeX file, `proselint` in Markdown — is chained after this one:
+
+```elisp
+(with-eval-after-load 'flycheck
+  (flycheck-add-next-checker 'lsp-ltex-plus 'tex-chktex))
+```
+
+The checker reports what the server has already sent and asks flycheck to check again each time the server publishes, so the errors follow your edits the way the flymake underlines do, at the pace of `lsp-ltex-plus-change-delay`. Each error's id is the rule's id, shown after the message and in the error list's ID column, which is what disabling a rule needs. The LTeX+ menu is the same under either front-end: `C-c "` opens it. `M-x flycheck-verify-setup` shows whether the checker is checking the buffer and whether the server is running.
 
 ### Checking file-less buffers
 
@@ -416,6 +440,7 @@ An empty space means the parameter has no direct counterpart at that layer: typi
 | `lsp-ltex-plus-check-programming-languages` | A | X | When non-nil, enable grammar checking in comments of programming languages (disabled by default, matching LTeX+). *Type:* boolean; *default:* `nil`. | | |
 | `lsp-ltex-plus-check-fileless-buffers` | A | X | When non-nil, also check buffers with no backing file (e.g. `*scratch*`, capture buffers). See [Checking file-less buffers](#checking-file-less-buffers). *Type:* boolean; *default:* `t`. | | |
 | `lsp-ltex-plus-disable-flyspell` | A | X | When non-nil, turning the mode on in a buffer where `flyspell-mode` is active switches flyspell off, and turning the mode off brings it back — only where this package stopped it. A reminder for anyone running flyspell globally: in a document LTeX+ checks, flyspell flags macro names, identifiers and every proper noun the system dictionary lacks, and its dictionary is not the one you maintain here. *Type:* boolean; *default:* `nil`. | | |
+| `lsp-ltex-plus-diagnostics-provider` | A | X | Which front-end shows the server's diagnostics: `flymake` (default, part of Emacs) or `flycheck`, which must be installed — chosen but not loadable, flymake is used and a warning says so once. See [Using flycheck instead of flymake](#using-flycheck-instead-of-flymake). *Choices:* `flymake`, `flycheck`. | | |
 | `lsp-ltex-plus-check-comint-input` | A | X | When non-nil, check the active input region of `comint-mode` buffers (shells, REPLs, agent shells) — only what you are currently typing, never the output or earlier input. See [Checking comint input](#checking-comint-input-shells-repls-agent-shells). *Type:* boolean; *default:* `t`. | | |
 | `lsp-ltex-plus-language` | L | X | The language LanguageTool should check against (e.g. `"en-US"`, `"de-DE"`). Valid codes are listed on the [LTeX+ supported-languages page](https://ltex-plus.github.io/ltex-plus/supported-languages.html); `"auto"` attempts language detection (not recommended — no spelling). *Type:* string; *default:* `"en-US"`. | X | X |
 | `lsp-ltex-plus-dictionary` | L | X | Additional words accepted as correctly spelled (language-specific). *Type:* plist; *default:* `nil`. See [External settings](#external-settings) for format and behaviour. | X | |
@@ -447,7 +472,7 @@ An empty space means the parameter has no direct counterpart at that layer: typi
 | `lsp-ltex-plus-paragraph-cache-ttl-minutes` | L | X | How long, in minutes, a document's cached results are kept after they stop being used, before a background sweep drops them. The actively edited file always stays warm, and a document's cache is cleared immediately when the file is closed. *Type:* integer; *default:* `30`. | X | |
 | `lsp-ltex-plus-paragraph-cache-enabled` | L | X | Whether ltex-ls-plus reuses cached results for unchanged paragraphs so an edit only re-checks the paragraphs that changed. Set to nil to disable result reuse (not recommended) — every paragraph is re-checked on each pass. Paragraphs are still sliced and batched into requests, just never stored or served from the cache. *Type:* boolean; *default:* `t`. | X | |
 | `lsp-ltex-plus-completion-enabled` | L | X | Whether the server offers word completion. Sent to the server as before, but this client does not yet request completions, so it has no visible effect for now. *Type:* boolean; *default:* `nil`. | X | |
-| `lsp-ltex-plus-diagnostic-severity` | L | X | Severity of the diagnostics; it decides the flymake type the underline gets. *Choices:* `"error"`, `"warning"` (default), `"information"`, `"hint"`. | X | |
+| `lsp-ltex-plus-diagnostic-severity` | L | X | Severity of the diagnostics; it decides the flymake type, or flycheck level, the underline gets. *Choices:* `"error"`, `"warning"` (default), `"information"`, `"hint"`. | X | |
 | `lsp-ltex-plus-check-frequency` | L | X | Controls when documents should be checked. *Choices:* `"edit"` (default, after every pause in typing), `"save"` (on open and save), `"manual"` (explicit commands only). | X | |
 | `lsp-ltex-plus-clear-diagnostics-when-closing-file` | L | X | Whether to clear diagnostics when a file is closed. *Type:* boolean; *default:* `t`. | X | |
 
@@ -735,14 +760,14 @@ This section is for users who want to understand how `lsp-ltex-plus` works inter
 
 Every message between Emacs and `ltex-ls-plus` is recorded, with a timestamp, in the `*ltex-ls-plus events*` buffer that `jsonrpc` keeps for the connection. By default it holds the last couple of megabytes, enough for a bug report; under `lsp-ltex-plus-debug` it is unbounded, the client's own steps are logged to `*lsp-ltex-plus::client*`, and the server is asked for its own message trace (`lsp-ltex-plus-trace-server`). The server's standard error — its Java log — is in `*ltex-ls-plus stderr*`.
 
-A check as it appears there: a `textDocument/didChange` goes out with the whole text; the server sends back a `workspace/configuration` request and an `ltex/workspaceSpecificConfiguration` request, both tagged with the document's URI, and the client answers each from that document's buffer; then `textDocument/publishDiagnostics` arrives, and flymake draws it.
+A check as it appears there: a `textDocument/didChange` goes out with the whole text; the server sends back a `workspace/configuration` request and an `ltex/workspaceSpecificConfiguration` request, both tagged with the document's URI, and the client answers each from that document's buffer; then `textDocument/publishDiagnostics` arrives, and the front-end draws it.
 
 ### How does `lsp-ltex-plus-mode` get set up and activated?
 
 The package is split into a tiny bootstrap file and the client proper:
 
 - **`lsp-ltex-plus-bootstrap.el`** — tiny, no dependencies. Loaded at `:init` time. Defines the major-mode alist and exposes the autoloaded entry point.
-- **`lsp-ltex-plus.el`** and the files it requires — the settings, the connection, the flymake backend, the code actions, the comint region. Loaded lazily, only when a relevant buffer is first opened.
+- **`lsp-ltex-plus.el`** and the files it requires — the settings, the connection, the flymake backend and the flycheck checker, the code actions, the comint region. Loaded lazily, only when a relevant buffer is first opened.
 
 #### Setup: what happens at startup
 
@@ -761,12 +786,14 @@ User opens foo.md
               → lsp-ltex-plus.el and the files it requires load
                   → the four word lists are read from disk
               → lsp-ltex-plus-mode body runs
-                  → the flymake backend is added and flymake-mode turned on
+                  → the front-end is attached: the flymake backend added and
+                    flymake-mode turned on (or, with flycheck chosen, the checker
+                    selected and flycheck-mode turned on)
                   → the buffer asks for the session's server
                       → none yet: ltex-ls-plus is started, initialize sent
                   → once initialized: configuration pushed, didOpen sent
                   → the server checks, pulls the buffer's settings, publishes
-                  → flymake shows the diagnostics
+                  → the front-end shows the diagnostics
 ```
 
 Every later buffer, from any project, reuses the same server: it is simply opened on it.

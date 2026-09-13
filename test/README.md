@@ -5,6 +5,7 @@ ERT tests for `lsp-ltex-plus`. Nothing here is needed to use the package.
 ```sh
 make test                      # everything; the live tests report as skipped
 make test-live                 # the same, with a real ltex-ls-plus
+LTEX_PLUS_FLYCHECK_DIR=DIR make test   # with the flycheck tests, DIR holding flycheck.el
 make live-repl                 # a daemon with the live fixture, for debugging
 test/run-tests.sh project      # files whose name contains "project"
 test/run-tests.sh -s "\"cache\""   # an ERT selector
@@ -22,6 +23,12 @@ not exist; on a machine with `ltex-ls-plus` on `PATH`, a test that
 reached for a connection without the fake in place once started a JVM,
 and every later test reused it in place of the fake and timed out for no
 visible reason.
+
+Flycheck is not part of Emacs either. The tests of the flycheck checker
+(`ltex-plus-flycheck-test.el`) run when `LTEX_PLUS_FLYCHECK_DIR` names
+the directory holding `flycheck.el`, which the runner puts on the load
+path, and report as *skipped* otherwise, with the reason. CI clones
+flycheck's latest release before running the suite.
 
 ## The fake server
 
@@ -94,6 +101,7 @@ a code action shaped like the ones the real server sends.
 | `ltex-plus-settings-test.el` | Merging, reading and writing the four language-keyed lists; the invariant that a code action never writes to a defcustom; the JSON boundary helpers; the `.eld` migration; the reload command; the server version guard; the settings object and its key set |
 | `ltex-plus-conn-test.el` | URIs, the `initialize` request, finding the executable, and against the fake: the handshake, work queued behind it, shutdown, document open and close, debounced edits, receiving diagnostics, and position conversion in UTF-16 with and without a document region |
 | `ltex-plus-diag-test.el` | The flymake backend: conversion, the kept report function, and through flymake itself, underlines that appear, change and clear from the server's publishes alone |
+| `ltex-plus-flycheck-test.el` | The flycheck checker: conversion to flycheck errors, the checker's definition and predicate, the request that waits behind a running check, and through flycheck itself against the fake — with flycheck's own triggers off — errors that appear, change and clear from the server's publishes alone |
 | `ltex-plus-scope-test.el` | Both configuration replies answered per document from the buffer the URI names, a dead document answered globally, sections, and the pulls seen over the wire |
 | `ltex-plus-project-test.el` | Project word lists merging with the global ones, relative paths resolving against the `.dir-locals.el` directory, and the modification-time cache |
 | `ltex-plus-actions-test.el` | Which diagnostics go out as context, the code action request, applying workspace edits, the menu and the dictionary shortcut, and the keymap |
@@ -101,7 +109,7 @@ a code action shaped like the ones the real server sends.
 | `ltex-plus-safety-test.el` | The `:safe` declarations — the endpoint allowlist, the project-path rule, and the policy that everything else is vouched for on a type check |
 | `ltex-plus-synthetic-test.el` | File-less buffers: the invented identity, its reuse, edits and pulls reaching the buffer, and the handover when the buffer is saved to a file |
 | `ltex-plus-comint-test.el` | The comint input region: what is sent, positions past the prompt, output above the region sending nothing, the busy gate, submitting |
-| `ltex-plus-mode-test.el` | What the minor mode decides before it reaches for a server, and against the fake, what it does once it has one, including the shutdown and restart commands |
+| `ltex-plus-mode-test.el` | What the minor mode decides before it reaches for a server, which front-end it attaches and lets go of, and against the fake, what it does once it has a server, including the shutdown and restart commands |
 | `ltex-plus-live-test.el` | Opt-in, against a real server: the whole pipeline, both configuration pulls, code actions, per-project language and dictionaries, the reload broadcast, file-less and comint buffers, teardown, and shutdown |
 
 ## Adding a test
