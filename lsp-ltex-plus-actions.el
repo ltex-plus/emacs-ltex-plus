@@ -159,58 +159,42 @@ be sent.  Returns the number of documents edited."
 ;; the client's to carry out, by writing to one of the four lists and
 ;; telling the server its configuration changed so that it pulls the lists
 ;; again.  The three differ only in which list they write to and which key
-;; the server used to carry the entries, so they share one body.  Each
-;; entry is routed by `lsp-ltex-plus--save-addition', which decides between
-;; the global and the project file; the command is passed along because a
-;; suggestion split in two by `either-allowing-user-choice' carries the
-;; answer on itself.
+;; the server used to carry the entries, and the kinds table knows both,
+;; so one function handles them all.  Each entry is routed by
+;; `lsp-ltex-plus--save-addition', which decides between the global and
+;; the project file; the command is passed along because a suggestion
+;; split in two by `either-allowing-user-choice' carries the answer on
+;; itself.
 
-(defun lsp-ltex-plus--handle-addition-action (command kind argument-key label)
-  "Add the entries COMMAND carries under ARGUMENT-KEY to KIND's list.
+(defun lsp-ltex-plus--handle-addition-action (command kind)
+  "Add the entries COMMAND carries to KIND's list.
 COMMAND is the protocol's command object; its first argument holds a
-map from language code to entries under ARGUMENT-KEY.  LABEL names the
-action in log and error messages.  Malformed arguments are reported,
-not raised: they come from the server, and a shape change upstream
-should produce a message rather than a backtrace mid-edit."
-  (lsp-ltex-plus--log "Action: %s (saving to the %s file)"
-                      label (lsp-ltex-plus--addition-target kind command))
-  (let* ((args (plist-get command :arguments))
+map from language code to entries, under the key the kinds table names
+for KIND.  Malformed arguments are reported, not raised: they come from
+the server, and a shape change upstream should produce a message rather
+than a backtrace mid-edit."
+  (let* ((name (plist-get command :command))
+         (args (plist-get command :arguments))
          (arg0 (and (vectorp args) (> (length args) 0) (aref args 0)))
-         (by-language (and arg0 (plist-get arg0 argument-key))))
+         (by-language (and arg0 (plist-get arg0 (lsp-ltex-plus--kind-get kind :argument-key)))))
+    (lsp-ltex-plus--log "Action: %s (saving to the %s file)"
+                        name (lsp-ltex-plus--addition-target kind command))
     (if (null by-language)
-        (message "[lsp-ltex-plus] %s: Malformed arguments %S" label args)
+        (message "[lsp-ltex-plus] %s: Malformed arguments %S" name args)
       (while by-language
         (let ((language (substring (symbol-name (pop by-language)) 1))
               (entries (append (pop by-language) nil)))
           (lsp-ltex-plus--save-addition kind language entries command)))))
   (lsp-ltex-plus--push-configuration))
 
-(defun lsp-ltex-plus--action-add-to-dictionary (command)
-  "Carry out the `_ltex.addToDictionary' COMMAND."
-  (lsp-ltex-plus--handle-addition-action command 'dictionary :words "addToDictionary"))
-
-(defun lsp-ltex-plus--action-disable-rules (command)
-  "Carry out the `_ltex.disableRules' COMMAND."
-  (lsp-ltex-plus--handle-addition-action command 'disabled-rules :ruleIds "disableRules"))
-
-(defun lsp-ltex-plus--action-hide-false-positives (command)
-  "Carry out the `_ltex.hideFalsePositives' COMMAND."
-  (lsp-ltex-plus--handle-addition-action command 'hidden-false-positives
-                                         :falsePositives "hideFalsePositives"))
-
-(defconst lsp-ltex-plus--command-handlers
-  '(("_ltex.addToDictionary" . lsp-ltex-plus--action-add-to-dictionary)
-    ("_ltex.disableRules" . lsp-ltex-plus--action-disable-rules)
-    ("_ltex.hideFalsePositives" . lsp-ltex-plus--action-hide-false-positives))
-  "The server commands this client carries out itself, and how.")
-
 (defun lsp-ltex-plus--execute-command (command)
   "Carry out the protocol COMMAND object, if it is one of ours.
-Any other command is reported: the server advertises none the client
-could send back, so there is nothing else to do with it."
+Ours are the three that write to a list; the kinds table says which
+list.  Any other command is reported: the server advertises none the
+client could send back, so there is nothing else to do with it."
   (let ((name (plist-get command :command)))
-    (if-let* ((handler (cdr (assoc name lsp-ltex-plus--command-handlers))))
-        (funcall handler command)
+    (if-let* ((kind (lsp-ltex-plus--kind-for-command name)))
+        (lsp-ltex-plus--handle-addition-action command kind)
       (message "[lsp-ltex-plus] Cannot carry out the command %S" name))))
 
 (defun lsp-ltex-plus--run-action (action)

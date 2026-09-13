@@ -158,9 +158,9 @@ produce a message, not a backtrace in the middle of the user's editing."
   (ltex-plus-additions-test--in-project
     (with-current-buffer buffer
       (let ((inhibit-message t))
-        (lsp-ltex-plus--action-add-to-dictionary
+        (lsp-ltex-plus--execute-command
          '(:command "_ltex.addToDictionary" :arguments [nil]))
-        (lsp-ltex-plus--action-add-to-dictionary
+        (lsp-ltex-plus--execute-command
          '(:command "_ltex.addToDictionary"))))
     (should-not (ltex-plus-additions-test--global-words))
     (should-not (ltex-plus-test-read-file project-dictionary))))

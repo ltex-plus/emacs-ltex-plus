@@ -862,25 +862,29 @@ keyword keys, vectors of strings as values, e.g.
      :stored        lsp-ltex-plus--dictionary-stored
      :global-file lsp-ltex-plus-dictionary-file
      :project-file  lsp-ltex-plus-project-dictionary-file
-     :command       "_ltex.addToDictionary")
+     :command       "_ltex.addToDictionary"
+     :argument-key  :words)
     (enabled-rules
      :custom        lsp-ltex-plus-enabled-rules
      :stored        lsp-ltex-plus--enabled-rules-stored
      :global-file lsp-ltex-plus-enabled-rules-file
      :project-file  lsp-ltex-plus-project-enabled-rules-file
-     :command       nil)
+     :command       nil
+     :argument-key  nil)
     (disabled-rules
      :custom        lsp-ltex-plus-disabled-rules
      :stored        lsp-ltex-plus--disabled-rules-stored
      :global-file lsp-ltex-plus-disabled-rules-file
      :project-file  lsp-ltex-plus-project-disabled-rules-file
-     :command       "_ltex.disableRules")
+     :command       "_ltex.disableRules"
+     :argument-key  :ruleIds)
     (hidden-false-positives
      :custom        lsp-ltex-plus-hidden-false-positives
      :stored        lsp-ltex-plus--hidden-false-positives-stored
      :global-file lsp-ltex-plus-hidden-false-positives-file
      :project-file  lsp-ltex-plus-project-hidden-false-positives-file
-     :command       "_ltex.hideFalsePositives"))
+     :command       "_ltex.hideFalsePositives"
+     :argument-key  :falsePositives))
   "The four language-keyed settings, by kind.
 Each entry maps a kind to the variables behind it:
 
@@ -889,7 +893,9 @@ Each entry maps a kind to the variables behind it:
   :global-file  the global file under `user-emacs-directory'
   :project-file   the setting naming a project's own file, if it has one
   :command        the server command whose suggestion writes here, or nil
-                  for `enabled-rules', which no suggestion writes to")
+                  for `enabled-rules', which no suggestion writes to
+  :argument-key   the key under which that command carries its entries,
+                  in a map from language code to entries")
 
 (defun lsp-ltex-plus--kind-get (kind property)
   "Return PROPERTY of KIND from `lsp-ltex-plus--setting-kinds'."
