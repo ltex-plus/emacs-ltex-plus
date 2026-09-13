@@ -1,5 +1,7 @@
 # Emacs LTeX+
 
+> **This branch is frozen.** It preserves `lsp-ltex-plus` as it was when it ran on the [`lsp-mode`](https://github.com/emacs-lsp/lsp-mode) framework, up to version 0.6.0, and is kept for historical reference only; it receives no updates. Since version 1.0.0 the package speaks the Language Server Protocol itself, over the `jsonrpc` library bundled with Emacs, and depends on no other package. Current development is on [`main`](https://github.com/ltex-plus/emacs-ltex-plus/tree/main), whose [README](https://github.com/ltex-plus/emacs-ltex-plus#no-lsp-mode-required) explains the change and [how to migrate](https://github.com/ltex-plus/emacs-ltex-plus#migrating-from-060).
+
 <!-- ltex: language=en-GB -->
 <!-- ltex: dictionary+=plist -->
 <!-- ltex: dictionary+=defcustom -->
