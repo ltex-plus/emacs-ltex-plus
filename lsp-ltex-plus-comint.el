@@ -46,16 +46,12 @@
 
 (defun lsp-ltex-plus--comint-input-start ()
   "Return the position where the active comint input begins.
-The process mark, which comint keeps at the boundary between output
-above and the input being typed below; failing that the end of the
-last prompt, and failing that the end of the buffer."
+The process mark, which comint keeps at the boundary between the output
+above and the input being typed below.  Without a live process there is
+no boundary and no input: the end of the buffer, an empty document."
   (let ((process (get-buffer-process (current-buffer))))
-    (cond
-     ((and process (marker-position (process-mark process)))
-      (marker-position (process-mark process)))
-     ((and (boundp 'comint-last-prompt) comint-last-prompt)
-      (cdr comint-last-prompt))
-     (t (point-max)))))
+    (or (and process (marker-position (process-mark process)))
+        (point-max))))
 
 (defun lsp-ltex-plus--comint-input-ready-p ()
   "Return non-nil when the comint buffer is waiting for the user to type.
