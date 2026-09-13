@@ -380,14 +380,23 @@ variable.  nil means unset (the bundled or PATH Java is used)."
   :type '(choice (const :tag "Unset" nil) (directory :tag "Directory"))
   :group 'lsp-ltex-plus)
 
-(defcustom lsp-ltex-plus-java-initial-heap 64
-  "Initial size of the Java heap memory in megabytes (corresponds to -Xms)."
-  :type 'integer
+(defcustom lsp-ltex-plus-java-initial-heap nil
+  "Initial size of the Java heap in megabytes, or nil to let the JVM decide.
+Passed to the server's launcher as -Xms when set.  Read when the server
+starts; `lsp-ltex-plus-restart-server' applies a change."
+  :type '(choice (const :tag "JVM default" nil) integer)
   :group 'lsp-ltex-plus)
 
-(defcustom lsp-ltex-plus-java-max-heap 512
-  "Maximum size of the Java heap memory in megabytes (corresponds to -Xmx)."
-  :type 'integer
+(defcustom lsp-ltex-plus-java-max-heap nil
+  "Maximum size of the Java heap in megabytes, or nil to let the JVM decide.
+Passed to the server's launcher as -Xmx when set.  The JVM's own default
+is a quarter of the machine's memory, which is what the server has
+always run with from this client and is ample; a fixed cap is for
+machines where that is too much.  512 is too little for a server that
+checks in two languages at once -- it never finishes loading the second.
+Read when the server starts; `lsp-ltex-plus-restart-server' applies a
+change."
+  :type '(choice (const :tag "JVM default" nil) integer)
   :group 'lsp-ltex-plus)
 
 (defcustom lsp-ltex-plus-sentence-cache-size 0

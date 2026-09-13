@@ -465,8 +465,8 @@ An empty space means the parameter has no direct counterpart at that layer: typi
 | `lsp-ltex-plus-ltex-ls-path` | R |  | Path to the root directory of ltex-ls-plus (contains `bin` and `lib` subdirectories); its `bin` is searched for the executable. *Type:* `nil` or string; *default:* `nil` (use the executable found on `PATH`). | X | |
 | `lsp-ltex-plus-ltex-ls-log-level` | R |  | Logging level (verbosity) of the ltex-ls-plus server log. *Choices* (descending verbosity): `"severe"`, `"warning"`, `"info"`, `"config"`, `"fine"` (default), `"finer"`, `"finest"`. | X | |
 | `lsp-ltex-plus-java-path` | R |  | Path to an existing Java installation (same value you would use for `JAVA_HOME`), passed to the server's launcher as such. *Type:* `nil` or string; *default:* `nil` (use the bundled JRE). | X | |
-| `lsp-ltex-plus-java-initial-heap` | R |  | Initial size of the Java heap in megabytes (`-Xms`). *Type:* integer; *default:* `64`. | X | |
-| `lsp-ltex-plus-java-max-heap` | R |  | Maximum size of the Java heap in megabytes (`-Xmx`). *Type:* integer; *default:* `512`. | X | |
+| `lsp-ltex-plus-java-initial-heap` | R |  | Initial size of the Java heap in megabytes, passed to the launcher as `-Xms` when set. *Type:* `nil` or integer; *default:* `nil` (the JVM decides). | | |
+| `lsp-ltex-plus-java-max-heap` | R |  | Maximum size of the Java heap in megabytes, passed to the launcher as `-Xmx` when set. Left unset, the JVM takes a quarter of the machine's memory, which is ample; a fixed cap is for machines where that is too much, and 512 is too little for two languages at once. *Type:* `nil` or integer; *default:* `nil` (the JVM decides). | | |
 | `lsp-ltex-plus-sentence-cache-size` | R |  | Size of the LanguageTool `ResultCache` in sentences. The default and recommended value `0` disables the local LanguageTool server's own cache entirely: ltex-ls-plus keeps its own per-paragraph cache (see `lsp-ltex-plus-paragraph-cache-enabled`), which supersedes LanguageTool's caching. Use a positive value to turn it back on, but be aware that for the edit loop this is redundant and only adds CPU and memory overhead with no additional benefit. To restore LanguageTool's caching instead, set this positive and also set `lsp-ltex-plus-paragraph-cache-enabled` to nil. *Type:* integer; *default:* `0`. | X | X |
 | `lsp-ltex-plus-max-request-size` | L | X | Largest amount of text, in characters, sent to LanguageTool in a single request when a run of changed paragraphs is batched together (typically the first, whole-document check). Text exceeding this is split across several requests; an individual paragraph is never split. The default fits within the [per-request character limit](https://languagetool.org/http-api/) of the free remote service; if you use a local server (`lsp-ltex-plus-lt-server-uri` is nil) or have a Premium account, consider raising it to 60000. *Type:* integer; *default:* `20000`. | X | |
 | `lsp-ltex-plus-paragraph-cache-ttl-minutes` | L | X | How long, in minutes, a document's cached results are kept after they stop being used, before a background sweep drops them. The actively edited file always stays warm, and a document's cache is cleared immediately when the file is closed. *Type:* integer; *default:* `30`. | X | |
@@ -711,12 +711,14 @@ The **remote LanguageTool server** (when `lsp-ltex-plus-lt-server-uri` points at
 
 The LTeX+ server runs on the Java Virtual Machine (JVM) and can be memory-intensive. If the server crashes unexpectedly or becomes unresponsive, you may need to adjust its memory allocation.
 
-You can control the Java heap size using these variables (values are in megabytes):
+By default the JVM decides its own heap size, a quarter of the machine's memory, which is ample. Two settings, both `nil` by default, put a fixed size in its place (values in megabytes):
 
-- `lsp-ltex-plus-java-initial-heap` (default: `64`): Corresponds to the `-Xms` Java option.
-- `lsp-ltex-plus-java-max-heap` (default: `512`): Corresponds to the `-Xmx` Java option.
+- `lsp-ltex-plus-java-initial-heap`: the `-Xms` Java option.
+- `lsp-ltex-plus-java-max-heap`: the `-Xmx` Java option.
 
-If you encounter crashes, try increasing the maximum heap size:
+When set, they reach the server's launcher script as `JAVA_OPTS` when the server starts, ahead of any `JAVA_OPTS` already in your environment, so a flag you set there yourself wins. A change takes effect at the next `M-x lsp-ltex-plus-restart-server`.
+
+A cap is for a machine where a quarter of memory is too much to give a grammar checker. Do not set it below what your languages need: at 512 MB the server never finishes loading a second language.
 
 ```elisp
 (use-package lsp-ltex-plus

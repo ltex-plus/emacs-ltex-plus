@@ -166,15 +166,33 @@ be found."
                   lsp-ltex-plus-ls-plus-executable))
     (list executable)))
 
+(defun lsp-ltex-plus--heap-options ()
+  "Return the JVM heap flags the two heap settings ask for, as a list.
+Empty when both are nil, which leaves the JVM to its own defaults."
+  (delq nil (list (and lsp-ltex-plus-java-initial-heap
+                       (format "-Xms%dm" lsp-ltex-plus-java-initial-heap))
+                  (and lsp-ltex-plus-java-max-heap
+                       (format "-Xmx%dm" lsp-ltex-plus-java-max-heap)))))
+
 (defun lsp-ltex-plus--process-environment ()
   "Return the environment to start the server with.
-`lsp-ltex-plus-java-path', when set, is passed as `JAVA_HOME', which is
-how the `ltex-ls-plus' launcher script picks its Java."
-  (let ((java (lsp-ltex-plus--str lsp-ltex-plus-java-path)))
-    (if (string-empty-p java)
-        process-environment
-      (cons (concat "JAVA_HOME=" (directory-file-name (expand-file-name java)))
-            process-environment))))
+The launcher script reads two variables.  `JAVA_HOME' picks the Java,
+and is set from `lsp-ltex-plus-java-path' when that is.  `JAVA_OPTS'
+holds options for the JVM; when either heap setting is set, its flag is
+put there, ahead of whatever `JAVA_OPTS' the user already has, so where
+both name the same flag the user's wins.  With neither set, the
+environment is passed through as it is."
+  (let* ((java (lsp-ltex-plus--str lsp-ltex-plus-java-path))
+         (heap (lsp-ltex-plus--heap-options))
+         (theirs (getenv "JAVA_OPTS"))
+         (env process-environment))
+    (when heap
+      (push (concat "JAVA_OPTS=" (string-join heap " ")
+                    (if (and theirs (not (string-empty-p theirs))) (concat " " theirs) ""))
+            env))
+    (unless (string-empty-p java)
+      (push (concat "JAVA_HOME=" (directory-file-name (expand-file-name java))) env))
+    env))
 
 (defun lsp-ltex-plus--make-process (name command root)
   "Start COMMAND as process NAME in directory ROOT and return it.

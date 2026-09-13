@@ -127,6 +127,34 @@ user who unpacked a release somewhere expects it to do here."
                           (seq-difference (lsp-ltex-plus--process-environment)
                                           process-environment)))))
 
+(ert-deftest ltex-plus-conn-test-heap-sizes-reach-the-launcher-as-java-opts ()
+  "A heap setting goes to the launcher as -Xms or -Xmx in JAVA_OPTS; unset, nothing does.
+The server never read them from the settings object; the launcher
+script hands JAVA_OPTS to the JVM.  With both settings nil the
+environment is untouched, so the JVM keeps its own default -- a fixed
+cap of 512 MB, once the documented default, stops a server from loading
+a second language.  A JAVA_OPTS the user already has comes after ours,
+so a flag of theirs wins."
+  (let ((clean (seq-remove (lambda (entry) (string-prefix-p "JAVA_OPTS=" entry))
+                           process-environment)))
+    (let ((lsp-ltex-plus-java-initial-heap nil)
+          (lsp-ltex-plus-java-max-heap nil)
+          (process-environment clean))
+      (should (equal (lsp-ltex-plus--process-environment) clean)))
+    (let ((lsp-ltex-plus-java-initial-heap nil)
+          (lsp-ltex-plus-java-max-heap 2048)
+          (process-environment clean))
+      (should (member "JAVA_OPTS=-Xmx2048m" (lsp-ltex-plus--process-environment))))
+    (let ((lsp-ltex-plus-java-initial-heap 128)
+          (lsp-ltex-plus-java-max-heap 2048)
+          (process-environment clean))
+      (should (member "JAVA_OPTS=-Xms128m -Xmx2048m" (lsp-ltex-plus--process-environment))))
+    (let ((lsp-ltex-plus-java-initial-heap 64)
+          (lsp-ltex-plus-java-max-heap 512)
+          (process-environment (cons "JAVA_OPTS=-Dfoo=bar" clean)))
+      (should (member "JAVA_OPTS=-Xms64m -Xmx512m -Dfoo=bar"
+                      (lsp-ltex-plus--process-environment))))))
+
 ;;;; -- Session state ----------------------------------------------------------
 
 (ert-deftest ltex-plus-conn-test-events-buffer-initargs-suit-this-jsonrpc ()
