@@ -222,7 +222,7 @@ Applying the first one first would shift the second's positions."
       (with-current-buffer buffer
         (goto-char 8)
         (ltex-plus-actions-test--choosing "Use 'the'"
-          (lsp-ltex-plus-code-actions)
+          (lsp-ltex-plus-actions)
           (should (equal offered '("Use 'the'"))))
         (should (equal (buffer-string) "Hello the world.\n"))))))
 
@@ -239,7 +239,7 @@ Applying the first one first would shift the second's positions."
       (with-current-buffer buffer
         (goto-char 8)
         (ltex-plus-actions-test--choosing "Add 'teh' to dictionary"
-          (lsp-ltex-plus-code-actions)
+          (lsp-ltex-plus-actions)
           (should (equal offered '("Use 'the'" "Add 'teh' to dictionary")))))
       (should (equal (ltex-plus-test-words lsp-ltex-plus--dictionary-merged) '("teh")))
       (ltex-plus-fake-wait-for
@@ -260,7 +260,7 @@ Applying the first one first would shift the second's positions."
         (with-current-buffer buffer
           (goto-char 8)
           (ltex-plus-actions-test--choosing "Use 'the' (2)"
-            (lsp-ltex-plus-code-actions)
+            (lsp-ltex-plus-actions)
             (should (equal offered '("Use 'the'" "Use 'the' (2)"))))
           (should (equal (buffer-string) "Hello THE world.\n")))))))
 
@@ -274,7 +274,7 @@ Applying the first one first would shift the second's positions."
                    (lambda (&rest _) (error "No menu should appear")))
                   ((symbol-function 'message)
                    (lambda (fmt &rest args) (setq said (apply #'format fmt args)))))
-          (lsp-ltex-plus-code-actions)))
+          (lsp-ltex-plus-actions)))
       (should (string-match-p "Nothing to suggest" said)))))
 
 (ert-deftest ltex-plus-actions-test-add-to-dictionary-skips-the-menu ()
@@ -324,29 +324,24 @@ Applying the first one first would shift the second's positions."
 
 ;;;; -- The keymap ---------------------------------------------------------------
 
-(ert-deftest ltex-plus-actions-test-the-commands-are-bound-under-the-prefix ()
-  "The four commands sit under the default prefix in the mode's map."
-  (should (eq (lookup-key lsp-ltex-plus-mode-map (kbd "C-c \" a"))
-              #'lsp-ltex-plus-code-actions))
-  (should (eq (lookup-key lsp-ltex-plus-mode-map (kbd "C-c \" d"))
-              #'lsp-ltex-plus-add-to-dictionary))
-  (should (eq (lookup-key lsp-ltex-plus-mode-map (kbd "C-c \" r"))
-              #'lsp-ltex-plus-reload-settings))
-  (should (eq (lookup-key lsp-ltex-plus-mode-map (kbd "C-c \" l"))
-              #'lsp-ltex-plus-list-dictionary)))
+(ert-deftest ltex-plus-actions-test-the-menu-is-bound-to-the-key ()
+  "The menu sits on the default key in the mode's map, and nothing else is bound."
+  (should (eq (lookup-key lsp-ltex-plus-mode-map (kbd "C-c \""))
+              #'lsp-ltex-plus-actions))
+  (should (= 1 (length (cdr lsp-ltex-plus-mode-map)))))
 
-(ert-deftest ltex-plus-actions-test-changing-the-prefix-moves-the-commands ()
-  "Setting the prefix through Customize rebinds, and unbinds the old one."
-  (let ((original lsp-ltex-plus-keymap-prefix))
+(ert-deftest ltex-plus-actions-test-changing-the-key-moves-the-menu ()
+  "Setting the key through Customize rebinds, and unbinds the old one."
+  (let ((original lsp-ltex-plus-actions-key))
     (unwind-protect
         (progn
-          (customize-set-variable 'lsp-ltex-plus-keymap-prefix "C-c ;")
-          (should (eq (lookup-key lsp-ltex-plus-mode-map (kbd "C-c ; a"))
-                      #'lsp-ltex-plus-code-actions))
-          (should-not (keymapp (lookup-key lsp-ltex-plus-mode-map (kbd "C-c \""))))
-          (customize-set-variable 'lsp-ltex-plus-keymap-prefix nil)
-          (should-not (keymapp (lookup-key lsp-ltex-plus-mode-map (kbd "C-c ;")))))
-      (customize-set-variable 'lsp-ltex-plus-keymap-prefix original))))
+          (customize-set-variable 'lsp-ltex-plus-actions-key "C-c ;")
+          (should (eq (lookup-key lsp-ltex-plus-mode-map (kbd "C-c ;"))
+                      #'lsp-ltex-plus-actions))
+          (should-not (lookup-key lsp-ltex-plus-mode-map (kbd "C-c \"")))
+          (customize-set-variable 'lsp-ltex-plus-actions-key nil)
+          (should-not (lookup-key lsp-ltex-plus-mode-map (kbd "C-c ;"))))
+      (customize-set-variable 'lsp-ltex-plus-actions-key original))))
 
 (provide 'ltex-plus-actions-test)
 ;;; ltex-plus-actions-test.el ends here

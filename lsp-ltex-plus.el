@@ -141,44 +141,36 @@ starts, such as the executable or the Java to run it with; those need
       (message "[lsp-ltex-plus] Settings reloaded and pushed to the server.")
     (message "[lsp-ltex-plus] Settings reloaded; no server is running.")))
 
-;;;; -- Keymap -----------------------------------------------------------------
+;;;; -- Key binding ------------------------------------------------------------
 
-;; A prefix of the package's own, so that the bindings never collide with
-;; whatever another language server's client puts under `C-c l'.  The
-;; prefix is a setting; changing it through Customize rebinds at once.
-
-(defvar lsp-ltex-plus-command-map
-  (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "a") #'lsp-ltex-plus-code-actions)
-    (define-key map (kbd "d") #'lsp-ltex-plus-add-to-dictionary)
-    (define-key map (kbd "r") #'lsp-ltex-plus-reload-settings)
-    (define-key map (kbd "l") #'lsp-ltex-plus-list-dictionary)
-    map)
-  "The commands of `lsp-ltex-plus-mode', bound under `lsp-ltex-plus-keymap-prefix'.")
+;; One key, for the one command a writer reaches for while typing: the
+;; menu of what the server suggests.  Everything else is rare enough to be
+;; called by name.  The key is a setting; changing it through Customize
+;; rebinds at once.
 
 (defvar lsp-ltex-plus-mode-map (make-sparse-keymap)
   "Keymap of `lsp-ltex-plus-mode'.
-Holds `lsp-ltex-plus-command-map' under `lsp-ltex-plus-keymap-prefix'.")
+Holds `lsp-ltex-plus-actions' under `lsp-ltex-plus-actions-key'.")
 
-(defun lsp-ltex-plus--bind-prefix (symbol prefix)
-  "Bind `lsp-ltex-plus-command-map' under PREFIX in the mode map; set SYMBOL.
-The `:set' function of `lsp-ltex-plus-keymap-prefix'.  The previous
-prefix, if any, is unbound first, so changing the setting moves the
-commands rather than duplicating them."
+(defun lsp-ltex-plus--bind-actions-key (symbol key)
+  "Bind `lsp-ltex-plus-actions' to KEY in the mode map; set SYMBOL.
+The `:set' function of `lsp-ltex-plus-actions-key'.  The previous key,
+if any, is unbound first, so changing the setting moves the command
+rather than duplicating it."
   (when (and (boundp symbol) (symbol-value symbol))
     (define-key lsp-ltex-plus-mode-map (kbd (symbol-value symbol)) nil t))
-  (set-default symbol prefix)
-  (when prefix
-    (define-key lsp-ltex-plus-mode-map (kbd prefix) lsp-ltex-plus-command-map)))
+  (set-default symbol key)
+  (when key
+    (define-key lsp-ltex-plus-mode-map (kbd key) #'lsp-ltex-plus-actions)))
 
-(defcustom lsp-ltex-plus-keymap-prefix "C-c \""
-  "Prefix under which the commands of `lsp-ltex-plus-mode' are bound.
-A key description as `kbd' reads it.  Under it: `a' offers the
-suggestions for the region or point, `d' adds the word at point to the
-dictionary, `r' reloads the settings, `l' lists the dictionary in
-force.  Set to nil to bind nothing and use the commands by name."
-  :type '(choice (string :tag "Key description") (const :tag "No bindings" nil))
-  :set #'lsp-ltex-plus--bind-prefix
+(defcustom lsp-ltex-plus-actions-key "C-c \""
+  "Key that opens the menu of LTeX+ suggestions, `lsp-ltex-plus-actions'.
+A key description as `kbd' reads it, bound in `lsp-ltex-plus-mode-map'.
+Those who let `lsp-ltex-plus-disable-flyspell' switch flyspell off may
+like flyspell's own key, which that frees.  Set to nil to bind nothing
+and call the command by name."
+  :type '(choice (string :tag "Key description") (const :tag "No binding" nil))
+  :set #'lsp-ltex-plus--bind-actions-key
   :group 'lsp-ltex-plus)
 
 ;;;; -- Minor mode -------------------------------------------------------------

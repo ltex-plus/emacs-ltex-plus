@@ -343,12 +343,14 @@ choice is never ambiguous and every action stays reachable."
                   candidates)))))
 
 ;;;###autoload
-(defun lsp-ltex-plus-code-actions ()
+(defun lsp-ltex-plus-actions ()
   "Offer what LTeX+ suggests for the region, or for the diagnostic at point.
 Pick a replacement to apply it; pick \"Add ... to dictionary\", \"Disable
 rule\" or \"Hide false positive\" to have the entry written to the
 list -- the project's or the global one, as `lsp-ltex-plus-save-additions-to'
-decides or as the two entries offered for it let you choose."
+decides or as the two entries offered for it let you choose.  The
+protocol calls these code actions; here they are simply actions, since
+they act on the server's suggestions and have nothing to do with code."
   (interactive)
   (let ((actions (lsp-ltex-plus--actions-here)))
     (if (null actions)

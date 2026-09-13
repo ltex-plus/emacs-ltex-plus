@@ -14,7 +14,7 @@
 This package gives you professional-grade grammar checking in Emacs while you write Markdown, LaTeX, Org-mode, Magit commit messages, and more — and also checks grammar and spelling inside comments and string literals of 30+ programming languages. It runs quietly beside your existing language servers, whatever client drives them, without interfering with them. With the local backend, checks typically complete fast enough to feel instant while you type — see [Performance](#performance).
 
 ![LTeX+ in action](screenshot.jpg)
-*LTeX+ in action: `C-c " a` offers the server's suggestions, allowing you to choose the suitable correction (e.g., fixing "your" to "you're" in the example above). The prefix is `lsp-ltex-plus-keymap-prefix`.*
+*LTeX+ in action: `C-c "` offers the server's suggestions, allowing you to choose the suitable correction (e.g., fixing "your" to "you're" in the example above). The prefix is `lsp-ltex-plus-keymap-prefix`.*
 
 For detailed information about the underlying LTeX+ server and its capabilities, please refer to the [official LTeX+ documentation](https://ltex-plus.github.io/ltex-plus/index.html).
 
@@ -290,10 +290,9 @@ For a more robust setup using `use-package` and `straight.el`, you can use the f
   ;; identifiers and proper nouns there, against a dictionary that is not
   ;; the one you maintain with LTeX+.  With flyspell out of the way its
   ;; own key, C-c $, is free, and it needs no Shift: a natural home for
-  ;; the LTeX+ commands (C-c $ a for the suggestions, C-c $ d to add a
-  ;; word).  Any other prefix works just as well.
+  ;; the LTeX+ menu.  Any other key works just as well.
   ;; (lsp-ltex-plus-disable-flyspell t)
-  ;; (lsp-ltex-plus-keymap-prefix "C-c $")
+  ;; (lsp-ltex-plus-actions-key "C-c $")
 
   :init
   ;; Enable lsp-ltex-plus for all supported major modes. The full package
@@ -315,7 +314,7 @@ For a more robust setup using `use-package` and `straight.el`, you can use the f
 - `lsp-ltex-plus-language`: The language variant to check (e.g., `"en-US"`, `"de-DE"`).
 - `lsp-ltex-plus-additional-rules-enable-picky-rules`: Set to `t` if you want stricter grammar checks (e.g., passive voice detection).
 - `lsp-ltex-plus-change-delay`: Seconds of quiet after an edit before the buffer is sent for checking (default `0.5`).
-- `lsp-ltex-plus-keymap-prefix`: The prefix the commands are bound under (default `C-c "`); `nil` binds nothing.
+- `lsp-ltex-plus-actions-key`: The key that opens the menu of suggestions (default `C-c "`); `nil` binds nothing.
 
 For the full list of available settings, see [Customization](#customization).
 
@@ -323,18 +322,19 @@ For the full list of available settings, see [Customization](#customization).
 
 Once active, the server's findings appear as flymake diagnostics: underlines in the buffer, the message in the echo area when point is on one, and the usual `M-x flymake-show-buffer-diagnostics` list. Each message ends with the rule's id in brackets, which is what you need when deciding to disable a rule.
 
-The commands live under `lsp-ltex-plus-keymap-prefix`, `C-c "` by default:
+One key does the work: `C-c "` runs `lsp-ltex-plus-actions`, which offers what the server suggests for the region, or for the diagnostic at point — replacements, *Add … to dictionary*, *Disable rule*, *Hide false positive* — and applies the one you pick. (The protocol calls these code actions; here they are simply actions, since they act on the server's suggestions and have nothing to do with code.) The key is `lsp-ltex-plus-actions-key`; `C-c $` is a natural choice if you let the package switch flyspell off, and `nil` binds nothing.
 
-| Key | Command | What it does |
-| :--- | :--- | :--- |
-| `C-c " a` | `lsp-ltex-plus-code-actions` | Offers what the server suggests for the region, or for the diagnostic at point: replacements, *Add … to dictionary*, *Disable rule*, *Hide false positive*. Pick one to apply it. |
-| `C-c " d` | `lsp-ltex-plus-add-to-dictionary` | Accepts the word at point into the dictionary without a menu. When both a project and the global dictionary are on offer, it still asks which. |
-| `C-c " r` | `lsp-ltex-plus-reload-settings` | Applies a changed setting or a hand-edited word list without restarting anything. |
-| `C-c " l` | `lsp-ltex-plus-list-dictionary` | Shows the words accepted in this buffer, naming the project file where one applies. |
+Point just after a flagged word still counts as being on it, so you can type a word, notice the underline, and press `C-c "` without moving.
 
-Two more commands are not bound: `lsp-ltex-plus-restart-server`, for a setting the server reads only when it starts, and `lsp-ltex-plus-shutdown-server`, which stops the server and switches the mode off wherever it was on.
+Everything else is called by name, since it is needed rarely:
 
-Point just after a flagged word still counts as being on it, so you can type a word, notice the underline, and press `C-c " d` without moving.
+| Command | What it does |
+| :--- | :--- |
+| `lsp-ltex-plus-add-to-dictionary` | Accepts the word at point into the dictionary without the menu. When both a project and the global dictionary are on offer, it still asks which. Bind it yourself if you want it on a key. |
+| `lsp-ltex-plus-reload-settings` | Applies a changed setting or a hand-edited word list without restarting anything. |
+| `lsp-ltex-plus-list-dictionary` | Shows the words accepted in this buffer, naming the project file where one applies. |
+| `lsp-ltex-plus-restart-server` | Restarts the server, for a setting it reads only when it starts. |
+| `lsp-ltex-plus-shutdown-server` | Stops the server and switches the mode off wherever it was on. |
 
 ### Toggling grammar checking in a buffer
 
@@ -411,7 +411,7 @@ An empty space means the parameter has no direct counterpart at that layer: typi
 | `lsp-ltex-plus-require-minimum-server-version` | R |  | When non-nil (the default), stop the server if it reports a version older than 18.7.0, or none at all, and say why. Set to nil to keep using it; the warning still appears. Allowed, but not encouraged — some features will not work. *Type:* boolean; *default:* `t`. | | |
 | `lsp-ltex-plus-debug` | R |  | When non-nil, log the client's steps to `*lsp-ltex-plus::client*`, keep the whole exchange in the `*ltex-ls-plus events*` buffer rather than a capped tail, and ask the server for its own message trace. *Type:* boolean; *default:* `nil`. | | |
 | `lsp-ltex-plus-major-modes` | A† |  | List of `(major-mode language-id programming-p)` triples driving client activation. *Type:* list; *default:* ~80 entries covering markup and programming modes (defined in `lsp-ltex-plus-bootstrap.el`). | | |
-| `lsp-ltex-plus-keymap-prefix` | L |  | Prefix under which the commands are bound: `a` suggestions, `d` add to dictionary, `r` reload, `l` list dictionary. Changing it through Customize rebinds at once. *Type:* key description or `nil` for no bindings; *default:* `"C-c \""`. | | |
+| `lsp-ltex-plus-actions-key` | L |  | Key that opens the menu of suggestions, `lsp-ltex-plus-actions`. Changing it through Customize rebinds at once. *Type:* key description or `nil` for no binding; *default:* `"C-c \""`. | | |
 | `lsp-ltex-plus-change-delay` | L | X | Seconds of quiet after an edit before the buffer is sent to the server. Every edit restarts the wait. *Type:* number; *default:* `0.5`. | | |
 | `lsp-ltex-plus-check-programming-languages` | A | X | When non-nil, enable grammar checking in comments of programming languages (disabled by default, matching LTeX+). *Type:* boolean; *default:* `nil`. | | |
 | `lsp-ltex-plus-check-fileless-buffers` | A | X | When non-nil, also check buffers with no backing file (e.g. `*scratch*`, capture buffers). See [Checking file-less buffers](#checking-file-less-buffers). *Type:* boolean; *default:* `t`. | | |
@@ -559,8 +559,8 @@ Two are qualified, for reasons of safety rather than taste. `lsp-ltex-plus-lt-se
 
 #### Inspecting and editing
 
-- `M-x lsp-ltex-plus-list-dictionary` (`C-c " l`) — prints the words in force for the current buffer: the global list (the union of `:custom` and the file contents) with this project's dictionary folded in where it keeps one, naming the project file so an unexpected word can be traced to its source.
-- `M-x lsp-ltex-plus-reload-settings` (`C-c " r`) — the one command for making a configuration change take effect. It re-reads all four files, rebuilds the merged views combining them with your `:custom` values, and tells the running server the configuration changed so it fetches its settings again on the next check. Convenient for bulk edits: open any of the four files under `~/.emacs.d/lsp-ltex-plus/` in a buffer, edit entries across one or more languages, save, then run this command. Also the right command to run after changing an `lsp-ltex-plus-*` defcustom in a live session — it pushes the new value to the server without an Emacs restart. Settings the server reads only when it starts (marked **R** above) need `M-x lsp-ltex-plus-restart-server` instead.
+- `M-x lsp-ltex-plus-list-dictionary` — prints the words in force for the current buffer: the global list (the union of `:custom` and the file contents) with this project's dictionary folded in where it keeps one, naming the project file so an unexpected word can be traced to its source.
+- `M-x lsp-ltex-plus-reload-settings` — the one command for making a configuration change take effect. It re-reads all four files, rebuilds the merged views combining them with your `:custom` values, and tells the running server the configuration changed so it fetches its settings again on the next check. Convenient for bulk edits: open any of the four files under `~/.emacs.d/lsp-ltex-plus/` in a buffer, edit entries across one or more languages, save, then run this command. Also the right command to run after changing an `lsp-ltex-plus-*` defcustom in a live session — it pushes the new value to the server without an Emacs restart. Settings the server reads only when it starts (marked **R** above) need `M-x lsp-ltex-plus-restart-server` instead.
 - The four files are plain Emacs plists. After hand-editing, either run the reload command above or restart Emacs to pick up the change.
 
 #### Pro tip: per-file overrides with magic comments
@@ -579,7 +579,7 @@ The comment syntax depends on the file's language — e.g. `% LTeX: rules-=EN_QU
 Version 1.0.0 replaced `lsp-mode` with the `jsonrpc` library bundled with Emacs (see [No `lsp-mode` required](#no-lsp-mode-required)). The settings that describe *what* to check are unchanged, and so are the word-list files; what changed is what surrounds the client. Go through your configuration once with this list:
 
 - **`lsp-mode` is no longer needed.** If you installed it only for LTeX+, you can remove it. Anything you set in `lsp-mode` for this client's sake — an entry in `lsp-disabled-clients`, a language-id tweak in `lsp-language-id-configuration`, an `lsp-diagnostics-provider` choice — can go as well; none of it is read.
-- **The commands have their own keys.** `lsp-mode` bound the code actions under its own prefix, `C-c l a a`. They now live under `lsp-ltex-plus-keymap-prefix`, `C-c " a` and friends (see [Usage](#usage)). Set the prefix if you want them elsewhere.
+- **One key binding.** `lsp-mode` bound the code actions under its own prefix, `C-c l a a`. The menu is now `lsp-ltex-plus-actions` on `C-c "`, set with `lsp-ltex-plus-actions-key`; everything else is called by name (see [Usage](#usage)).
 - **Diagnostics come through flymake.** Under `lsp-mode` they went through flycheck when it was installed. Anything you tuned in flycheck for LTeX+ no longer applies; flymake needs nothing configured.
 - **One knob for responsiveness.** `lsp-idle-delay`, `flycheck-idle-change-delay` and `lsp-debounce-full-sync-notifications-interval` used to decide, between them, how soon after typing the buffer was checked. `lsp-ltex-plus-change-delay` (default 0.5 s) replaces all three.
 - **Six settings are gone.** Setting one does nothing any more; delete each line:
