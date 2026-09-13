@@ -672,9 +672,9 @@ completed; nil against a server that omits `serverInfo\\='.")
 (defvar lsp-ltex-plus--server-version nil
   "Version of the ltex-ls-plus the session last connected to, or nil.
 Set by `lsp-ltex-plus--enforce-server-version\\=' from the `serverInfo\\='
-the server sent in its `initialize\\=' reply, or failing that from
-running the binary with `--version\\='.  Stored verbatim, build metadata
-and all, e.g. \"18.7.1-alpha.32+2026-08-26.g7977ac67\".")
+the server sent in its `initialize\\=' reply; nil against a server that
+gave none.  Stored verbatim, build metadata and all, e.g.
+\"18.7.1-alpha.32+2026-08-26.g7977ac67\".")
 
 ;; -- JSON-serialization helpers -----------------------------------------------
 ;;

@@ -772,34 +772,6 @@ version is always taken."
 ;; written for, and by default a server below it is stopped, with a
 ;; message that names the way out.
 
-(defun lsp-ltex-plus--installed-server-version ()
-  "Return the version the installed `ltex-ls-plus' reports, or nil.
-Runs the binary with `--version\=', which prints JSON:
-
-  {\"ltex-ls\": \"18.7.1-alpha.32+2026-08-26.g7977ac67\", \"java\": \"21.0.10\"}
-
-Used only when the running server did not report a version through the
-protocol; see `lsp-ltex-plus--enforce-server-version\='.
-
-A binary that exists and carries the executable bit can still be one the
-kernel refuses to run: built for another architecture, truncated, or a
-script whose interpreter is missing.  Each arrives here as a
-`file-error\=' and is something to fix on disk, so the file is named
-along with the reason.  Only that condition is caught: anything else is
-a fault in this function and must not be turned into a missing version."
-  (when-let* ((executable (lsp-ltex-plus--server-executable)))
-    (with-temp-buffer
-      (when (condition-case err
-                (eq 0 (call-process executable nil t nil "--version"))
-              (file-error
-               (message "[lsp-ltex-plus] Cannot run %s: %s"
-                        executable (error-message-string err))
-               nil))
-        (goto-char (point-min))
-        (when (re-search-forward
-               "\"ltex-ls\"[[:space:]]*:[[:space:]]*\"\\([^\"]+\\)\"" nil t)
-          (match-string 1))))))
-
 (defun lsp-ltex-plus--version-at-least-p (version minimum)
   "Return non-nil when VERSION is MINIMUM or newer.
 Only the leading numeric part of VERSION is compared: a release carries
@@ -813,19 +785,19 @@ at all -- nil included -- is never new enough."
 (defun lsp-ltex-plus--enforce-server-version (conn)
   "Stop CONN when the server it connected to is too old.
 On `lsp-ltex-plus--after-initialize-functions'.  The version is the one
-the server put in the `serverInfo\=' of its `initialize\=' reply; a
-server that gave none is asked through its binary instead.  A version
-that cannot be determined at all counts as a failure rather than as a
-pass: the server answered the handshake, so it should have been able to
-say what it is.
+the server put in the `serverInfo\=' of its `initialize\=' reply.  A
+server that gave none fails the check too, and that is no guess:
+ltex-ls-plus 18.7.0 is the first release that reports its version, and
+also the floor this package needs, so a silent server is an old one.
+The binary is not run to find out more -- that would be a second JVM
+start, to learn a version that is too old whatever it is.
 
 Either way the user is told.  Whether the server is then stopped is up
 to `lsp-ltex-plus-require-minimum-server-version\='; opting out keeps it
 running, with the warning standing.  Stopping ends the connection, which
 switches the mode off in the buffers waiting for it."
   (let* ((info (lsp-ltex-plus--connection-server-info conn))
-         (version (or (plist-get info :version)
-                      (lsp-ltex-plus--installed-server-version)))
+         (version (plist-get info :version))
          (stopping lsp-ltex-plus-require-minimum-server-version))
     (setq lsp-ltex-plus--server-name (plist-get info :name)
           lsp-ltex-plus--server-version version)
@@ -835,7 +807,10 @@ switches the mode off in the buffers waiting for it."
                (if version
                    (format "ltex-ls-plus %s is older than %s, which this package needs."
                            version lsp-ltex-plus-minimum-server-version)
-                 "Cannot determine the ltex-ls-plus version.")
+                 (format (concat "This ltex-ls-plus gave no version, so it predates"
+                                 " 18.7.0, the first release that reports one;"
+                                 " this package needs %s or newer.")
+                         lsp-ltex-plus-minimum-server-version))
                (if stopping " Stopping the server." " Some features may not work.")
                "  See https://github.com/ltex-plus/emacs-ltex-plus/#server-installation"
                (when stopping

@@ -610,14 +610,18 @@ If it returns `nil`, add the binary's directory to your `PATH`, provide the abso
 ### Server Too Old After a Package Update
 
 Updating the Emacs package can leave you with an `ltex-ls-plus` that predates
-it. When that happens, `lsp-ltex-plus` reports the two versions and stops the
-server rather than running against one it was not written for:
+it. When that happens, `lsp-ltex-plus` says so and stops the server rather
+than running against one it was not written for:
 
 ```
-[lsp-ltex-plus] ltex-ls-plus 18.6.9 is older than 18.7.0, which this package
-needs. Stopping the server.  See … , or set
-`lsp-ltex-plus-require-minimum-server-version' to nil to keep using it.
+[lsp-ltex-plus] This ltex-ls-plus gave no version, so it predates 18.7.0, the
+first release that reports one; this package needs 18.7.0 or newer. Stopping
+the server.  See … , or set `lsp-ltex-plus-require-minimum-server-version' to
+nil to keep using it.
 ```
+
+(A server that does report a version below a future floor is named with it
+instead: "ltex-ls-plus 18.7.0 is older than …".)
 
 Updating the server is the real answer, and [Server
 Installation](#server-installation) covers it. But an old server is usually
