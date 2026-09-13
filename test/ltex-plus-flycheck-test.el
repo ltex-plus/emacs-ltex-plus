@@ -78,11 +78,12 @@ shows after the message."
 ;;;; -- The checker ------------------------------------------------------------
 
 (ert-deftest ltex-plus-flycheck-test-the-checker-is-defined-for-the-mode-table ()
-  "Loading flycheck defines the checker, for every mode the package knows.
+  "The checker is defined for every mode the package knows.
 Its predicate keeps it out of a buffer the package is not checking, so
 that listing it in `flycheck-checkers' cannot make it claim a buffer and
 show nothing."
   (ltex-plus-flycheck-test--need-flycheck)
+  (lsp-ltex-plus--flycheck-define)
   (should (flycheck-valid-checker-p 'lsp-ltex-plus))
   (should (flycheck-checker-supports-major-mode-p 'lsp-ltex-plus 'rst-mode))
   (should (flycheck-checker-supports-major-mode-p 'lsp-ltex-plus 'org-mode))

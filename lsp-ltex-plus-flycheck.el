@@ -13,9 +13,9 @@
 ;;
 ;; A flycheck checker fed by the diagnostics the connection layer stores,
 ;; for those who run flycheck rather than flymake.  Flycheck is optional:
-;; this file loads without it, and the checker is defined the moment
-;; flycheck is loaded.  Flymake stays the default front-end; the choice is
-;; `lsp-ltex-plus-diagnostics-provider'.
+;; this file loads without it, and the checker is defined when the first
+;; buffer is attached to it.  Flymake stays the default front-end; the
+;; choice is `lsp-ltex-plus-diagnostics-provider'.
 ;;
 ;; Flycheck's model is pull, like flymake's, but it takes one answer per
 ;; check: the callback a checker is handed is good for exactly one
@@ -47,6 +47,7 @@
 (declare-function flycheck-buffer "ext:flycheck")
 (declare-function flycheck-running-p "ext:flycheck")
 (declare-function flycheck-add-mode "ext:flycheck")
+(declare-function flycheck-valid-checker-p "ext:flycheck")
 (declare-function flycheck-checker-supports-major-mode-p "ext:flycheck")
 (declare-function flycheck-define-generic-checker "ext:flycheck")
 (declare-function flycheck-error-new-at "ext:flycheck")
@@ -130,7 +131,10 @@ moment flycheck reads what is stored."
            :face (if running 'success '(bold warning))))))
 
 (defun lsp-ltex-plus--flycheck-define ()
-  "Define the `lsp-ltex-plus' checker.  Flycheck must be loaded."
+  "Define the `lsp-ltex-plus' checker.  Flycheck must be loaded.
+Called when the first buffer is attached rather than when flycheck
+loads: a package that acts on another's loading is configuration, and
+until a buffer is attached there is nothing for the checker to do."
   (flycheck-define-generic-checker 'lsp-ltex-plus
     "Grammar and spell checking by LTeX+ (ltex-ls-plus).
 
@@ -142,9 +146,6 @@ buffer the mode is turned on in while
     :verify #'lsp-ltex-plus--flycheck-verify
     :predicate (lambda () lsp-ltex-plus--flycheck-attached)
     :modes (mapcar #'car lsp-ltex-plus-major-modes)))
-
-(with-eval-after-load 'flycheck
-  (lsp-ltex-plus--flycheck-define))
 
 ;;;; -- Asking for a check -----------------------------------------------------
 
@@ -184,11 +185,14 @@ that is not attached to flycheck, or where flycheck is off."
 
 (defun lsp-ltex-plus--flycheck-attach ()
   "Make the current buffer show the server's diagnostics through flycheck.
-Selects the checker for the buffer, remembering what was selected
-before, teaches it the major mode if it has not met it, and turns
-`flycheck-mode' on if it is not already.  Flycheck must be installed;
-see `lsp-ltex-plus--flycheck-available-p'."
+Defines the checker if this is the first buffer, selects it for the
+buffer, remembering what was selected before, teaches it the major mode
+if it has not met it, and turns `flycheck-mode' on if it is not
+already.  Flycheck must be installed; see
+`lsp-ltex-plus--flycheck-available-p'."
   (require 'flycheck)
+  (unless (flycheck-valid-checker-p 'lsp-ltex-plus)
+    (lsp-ltex-plus--flycheck-define))
   (unless (flycheck-checker-supports-major-mode-p 'lsp-ltex-plus)
     (flycheck-add-mode 'lsp-ltex-plus major-mode))
   (setq lsp-ltex-plus--flycheck-attached t)
