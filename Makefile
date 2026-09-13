@@ -11,7 +11,10 @@
 #   make clean      remove build output
 #
 # The package depends on nothing outside Emacs itself, so no target needs
-# a load path beyond the repository.  EMACS selects the binary.
+# a load path beyond the repository -- except the tests of the flycheck
+# checker, which need flycheck: point LTEX_PLUS_FLYCHECK_DIR at the
+# directory holding flycheck.el, or they report as skipped.  EMACS selects
+# the binary.
 #
 # Running one file, or one test:
 #   test/run-tests.sh project

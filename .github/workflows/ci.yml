@@ -1,5 +1,7 @@
 # Byte-compilation, checkdoc and the offline ERT suite, on every push to
-# main and every pull request.
+# main and every pull request.  Flycheck, which the checker in
+# lsp-ltex-plus-flycheck.el is written against, is fetched at its latest
+# release so those tests run rather than skip.
 #
 # The live tests run in a job of their own, against the latest released
 # `ltex-ls-plus' (bundled JDK included).  The release tag is the cache
@@ -47,6 +49,20 @@ jobs:
       - uses: purcell/setup-emacs@master
         with:
           version: ${{ matrix.emacs_version }}
+
+      # Flycheck is not part of Emacs, and the tests of the flycheck
+      # checker skip without it.  The latest release is what is cloned, so
+      # a flycheck that changes under the checker shows up here rather
+      # than in a user's report -- the same bargain as the live job.
+      - name: Fetch flycheck
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(gh api repos/flycheck/flycheck/releases/latest --jq .tag_name)
+          git clone --quiet --depth 1 --branch "${tag}" \
+            https://github.com/flycheck/flycheck.git "${RUNNER_TEMP}/flycheck"
+          echo "LTEX_PLUS_FLYCHECK_DIR=${RUNNER_TEMP}/flycheck" >> "$GITHUB_ENV"
+          echo "flycheck ${tag}"
 
       - name: Report version
         run: emacs --version | head -1

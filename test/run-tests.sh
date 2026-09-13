@@ -13,7 +13,9 @@
 # test that asserts on list contents resets them first.  One process
 # saves the suite about ten Emacs start-ups.
 #
-# Also honours EMACS (default: emacs).
+# Also honours EMACS (default: emacs), and LTEX_PLUS_FLYCHECK_DIR: the
+# directory holding flycheck.el, which is not part of Emacs.  Without it
+# the tests of the flycheck checker report as skipped.
 #
 # Exit status: 0 when every file passed, 1 otherwise.
 
@@ -68,8 +70,15 @@ for file in "${files[@]}"; do
   load+=(-l "${file}")
 done
 
+extra=()
+if [[ -n "${LTEX_PLUS_FLYCHECK_DIR:-}" ]]; then
+  extra+=(-L "${LTEX_PLUS_FLYCHECK_DIR}")
+fi
+
 echo "=== $(printf '%s ' "${files[@]##*/}")"
-"${EMACS}" --batch -Q -L "${REPO_ROOT}" -L "${SCRIPT_DIR}" "${load[@]}" "${run[@]}"
+# The `+' expansion keeps an empty array from tripping `set -u' on bash 3.2.
+"${EMACS}" --batch -Q -L "${REPO_ROOT}" -L "${SCRIPT_DIR}" ${extra[@]+"${extra[@]}"} \
+  "${load[@]}" "${run[@]}"
 status=$?
 echo
 echo "==========================================================="
