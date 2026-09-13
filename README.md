@@ -23,9 +23,18 @@ For detailed information about the underlying LTeX+ server and its capabilities,
 If you use Emacs for writing—perhaps in the humanities, social sciences, or law—rather than for programming, the term "LSP" might be new to you. Here is a simple way to understand how this works:
 
 *   **The LSP Server (LTeX+):** This is a separate program that runs in the background on your computer. It "reads" your document as you type and identifies errors, much like the grammar checkers in Microsoft Word or Google Docs.
-*   **The Client (lsp-ltex-plus):** This is the package you are looking at now. It starts the server, sends it what you write, and shows what it finds. The conversation between the two follows the Language Server Protocol, carried by a small library that is part of Emacs; nothing else needs installing on the Emacs side.
+*   **The Client (lsp-ltex-plus):** This is the package you are looking at now. It starts the server, sends it what you write, and shows what it finds. The conversation between the two follows the Language Server Protocol, carried by a small library that is part of Emacs; nothing else needs installing on the Emacs side (see [No `lsp-mode` required](#no-lsp-mode-required)).
 
 While this technology was originally built for programmers to find "bugs" in their code, we use it here to provide a powerful, professional-grade assistant for your writing.
+
+## No `lsp-mode` required
+
+Despite the name, this package does not depend on `lsp-mode`, or on any other Emacs package. The `lsp-` prefix has two reasons, one historical and one technical:
+
+- **Historical:** until version 0.6.0 the client was built on `lsp-mode`, and was named after it, as `lsp-mode` clients are. Since version 1.0.0 it is not: it talks to the server itself, over the `jsonrpc` library that has been part of Emacs since 27.1, and shows what it finds through flymake, also part of Emacs. The name stayed so that existing configurations and the package's MELPA identity kept working.
+- **Technical:** the conversation with `ltex-ls-plus` still follows the Language Server Protocol, because that is what the server speaks. LSP is the protocol; `lsp-mode` is one of several Emacs frameworks that implement it, and this client no longer needs one.
+
+In practice: `package-install` or `straight` pulls in nothing else, Emacs starts as fast as before, and the client sits beside whatever else is checking your buffers, whether that is `eglot`, `lsp-mode` with another server, or nothing at all. If you avoided this package because of the `lsp-mode` dependency, that reason is gone.
 
 ## Offline Privacy vs. Online Power
 
@@ -754,17 +763,14 @@ For users who go the other way and pick only a handful of modes with `:restrict-
 Two Emacs LSP clients for LTeX already existed before this package:
 
 - [`emacs-languagetool/lsp-ltex`](https://github.com/emacs-languagetool/lsp-ltex) — the original client, targeted at the older `ltex-ls` server.
-- [`emacs-languagetool/lsp-ltex-plus`](https://github.com/emacs-languagetool/lsp-ltex-plus) — a more recent variant by the same author, with function and variable prefixes renamed and the client retargeted at `ltex-ls-plus`. From a reading of its source, the renaming is the only substantive change, so it shares the original's architecture. For that reason the [detailed comparison](docs/comparison-lsp-ltex.md) treats the two as one family and refers to them jointly as `lsp-ltex`.
+- [`emacs-languagetool/lsp-ltex-plus`](https://github.com/emacs-languagetool/lsp-ltex-plus) — a more recent variant by the same author, with function and variable prefixes renamed and the client retargeted at `ltex-ls-plus`. From a reading of its source, the renaming is the only substantive change, so it shares the original's architecture.
 
 > **Note on the name collision.** The overlap with `emacs-languagetool/lsp-ltex-plus` is unintentional — I was not aware of that project when I chose the name for this one. The two packages are independent; they simply converged on the same label.
 
-The motivation for writing a new client was practical: on my setup the existing client reliably stalled after a handful of edits — the server stopped publishing diagnostics and a workspace restart was needed to recover. Tracing that symptom led to a JSON-RPC id-collision bug in the message router the existing clients relied on, and from there to a from-scratch implementation designed specifically for `ltex-ls-plus`. Rebuilding the communication chain — starting with direct command-line interrogation of the server — made it possible to understand exactly how the server and client interact. The result is a lightweight client built around `ltex-ls-plus`'s actual behaviour (bi-directional server-initiated requests, full document sync, server-pulled configuration) rather than inheriting a design tuned for the older `ltex-ls`.
-
-Until version 1.0 this client ran on `lsp-mode`, and much of its code existed to patch or work around that framework. Since 1.0 it speaks the protocol itself, over the `jsonrpc` library bundled with Emacs, and depends on nothing else; the `lsp-` prefix in the name is historical.
+Both run on `lsp-mode`, and both were designed for the older `ltex-ls`. This client was written from scratch around what `ltex-ls-plus` actually does — server-initiated configuration requests, full document sync, per-language settings pulled before every check — and, since 1.0.0, without a framework in between (see [No `lsp-mode` required](#no-lsp-mode-required)). It also leaves the server binary to you rather than downloading and upgrading it on your behalf, which keeps the package small and its failure modes few.
 
 If you want to dig deeper:
 
-- [Detailed Technical Comparison between `lsp-ltex` and `lsp-ltex-plus`](docs/comparison-lsp-ltex.md)
 - [What is New with LTeX+?](docs/what-is-new-with-ltex-plus.md)
 
 ## License

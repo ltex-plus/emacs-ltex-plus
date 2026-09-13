@@ -23,6 +23,7 @@ The client no longer runs on `lsp-mode`. It speaks the Language Server Protocol 
 
 ### Removed
 - **Six settings that only meant something under `lsp-mode`** are retired and marked obsolete; a configuration that sets them keeps loading. `lsp-ltex-plus-apply-kind-first-patch` patched a router that is no longer used; `lsp-ltex-plus-multi-root` asked for workspace reuse that is now simply how the connection works; `lsp-ltex-plus-show-progress` silenced a spinner the client no longer has; `lsp-ltex-plus-show-latency` measured through advice on `lsp-mode` internals; `lsp-ltex-plus-server-input-log` and `lsp-ltex-plus-server-output-log` named tee log files that duplicated what the jsonrpc events buffer, `*ltex-ls-plus events*`, records.
+- **Two design notes written about the `lsp-mode` client** — `docs/comparison-lsp-ltex.md`, a comparison built around the protocol patches that client carried, and `docs/toggle-mode-design.md`, the plan for toggling the mode under `lsp-mode` — are gone, and the README no longer retells that history; a section near the top explains the name instead.
 - **Word completion is not requested.** `lsp-ltex-plus-completion-enabled` is still sent to the server, but the client does not issue `textDocument/completion`; the old behaviour came from `lsp-mode`'s completion machinery.
 
 ### Fixed
