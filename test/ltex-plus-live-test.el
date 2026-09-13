@@ -51,6 +51,20 @@ configuration pull, `didOpen', and `publishDiagnostics' in one."
     (should (seq-some (lambda (message) (string-match-p "pronoun" message))
                       (ltex-plus-live-messages buffer)))))
 
+(ltex-plus-live-deftest ltex-plus-live-test-a-programming-language-is-checked
+    "A comment in a Python buffer is checked.
+The server skips, silently, a document whose language id is not in
+`ltex.enabled', and its default set holds no programming language.  The
+client answers every pull with the document's own id; this is the test
+that the answer reaches the server for an id outside its default set,
+where a failure would look like a server that found nothing to say."
+  (ltex-plus-live-test--setup)
+  (let* ((lsp-ltex-plus-check-programming-languages t)
+         (buffer (ltex-plus-live-open
+                  (ltex-plus-live-write "code.py" "# Hello teh world.\nx = 1\n"))))
+    (should (eq (buffer-local-value 'major-mode buffer) 'python-mode))
+    (should (ltex-plus-live-flagged-p "teh" buffer))))
+
 (ltex-plus-live-deftest ltex-plus-live-test-clean-text-is-not-flagged
     "A correct sentence produces nothing.
 The other half of the test above: a client that reported diagnostics for

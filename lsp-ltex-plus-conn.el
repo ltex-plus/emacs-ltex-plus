@@ -432,14 +432,6 @@ document."
 Each is the protocol's diagnostic object, a plist, untouched; see the
 Diagnostics section below for reading positions out of one.")
 
-(defun lsp-ltex-plus--language-id (&optional buffer)
-  "Return the LSP language id for BUFFER (default the current buffer).
-Read from `lsp-ltex-plus-major-modes'; a mode not listed there is sent
-as plain text, which the server checks as prose."
-  (or (cadr (assq (buffer-local-value 'major-mode (or buffer (current-buffer)))
-                  lsp-ltex-plus-major-modes))
-      "plaintext"))
-
 (defun lsp-ltex-plus--make-fileless-uri ()
   "Return a fresh URI for a buffer that visits no file.
 The server treats a document's URI as an opaque name -- it checked

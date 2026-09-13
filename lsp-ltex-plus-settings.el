@@ -1102,23 +1102,13 @@ comparison."
 ;; client layer that answers the server has nothing of its own to say about
 ;; which words a document is checked against.
 
-(defun lsp-ltex-plus--enabled-languages ()
-  "Return the unique language IDs from `lsp-ltex-plus-major-modes'.
-All supported IDs are always returned.  Filtering happens client-side,
-via the dispatcher (`lsp-ltex-plus--maybe-activate') and the
-`lsp-ltex-plus-mode' guard: the server only ever sees documents for
-buffers in which the minor mode is active, so `ltex.enabled' can safely
-cover every registered language without triggering unwanted checks.
-
-This design differs from the VS Code LTeX+ extension, which (to the best
-of our knowledge) registers a static document selector covering every
-supported language and relies on `ltex.enabled' as a server-side runtime
-filter: the client always fires `textDocument/didChange' and the server
-drops notifications whose language ID is not enabled.  In the Emacs
-client the filter lives in the dispatcher instead, so the server only
-ever sees documents the user intended to check, and `ltex.enabled' is
-effectively a no-op by construction."
-  (seq-uniq (mapcar #'cadr lsp-ltex-plus-major-modes) #'string=))
+(defun lsp-ltex-plus--language-id (&optional buffer)
+  "Return the LSP language id for BUFFER (default the current buffer).
+Read from `lsp-ltex-plus-major-modes'; a mode not listed there is sent
+as plain text, which the server checks as prose."
+  (or (cadr (assq (buffer-local-value 'major-mode (or buffer (current-buffer)))
+                  lsp-ltex-plus-major-modes))
+      "plaintext"))
 
 (defun lsp-ltex-plus--workspace-specific-entry ()
   "Return the language-keyed settings for the document in the current buffer.
@@ -1155,7 +1145,14 @@ the custom capability the server takes them from
 Java path and heap sizes, and the trace level are the client's own
 business -- the launcher and the `initialize' request see them -- and
 the server would drop them unread."
-  (list :enabled (vconcat (lsp-ltex-plus--enabled-languages))
+  ;; `enabled' is the server's own filter: it silently skips a document
+  ;; whose language id is not in the set, and its default set holds no
+  ;; programming language.  Which buffers are checked is decided on this
+  ;; side, so the answer for a document is simply that document's id:
+  ;; the client opened it, it is enabled.  Read in the document's buffer,
+  ;; as every pull is; the global push, read in none, says plain text,
+  ;; which the server never skips and nothing is checked against.
+  (list :enabled (vector (lsp-ltex-plus--language-id))
         :language lsp-ltex-plus-language
         :bibtex (list :fields (lsp-ltex-plus--obj-or-empty lsp-ltex-plus-bibtex-fields))
         :latex (list :commands (lsp-ltex-plus--obj-or-empty lsp-ltex-plus-latex-commands)

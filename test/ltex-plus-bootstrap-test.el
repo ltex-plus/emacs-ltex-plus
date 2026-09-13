@@ -63,15 +63,6 @@ would quietly stop checking prose."
   (dolist (mode '(python-mode c-mode rust-mode emacs-lisp-mode sh-mode))
     (should (nth 2 (assq mode lsp-ltex-plus-major-modes)))))
 
-(ert-deftest ltex-plus-bootstrap-test-enabled-languages-are-unique ()
-  "`ltex.enabled' carries each language id once.
-Several modes share an id — three map to \"latex\" — and the server is
-sent the set, not the multiset."
-  (let ((languages (lsp-ltex-plus--enabled-languages)))
-    (should (equal languages (seq-uniq languages #'string=)))
-    (should (member "latex" languages))
-    (should (member "markdown" languages))))
-
 ;;;; -- Building the enabled set -----------------------------------------------
 
 (defmacro ltex-plus-bootstrap-test--with-clean-hook (&rest body)

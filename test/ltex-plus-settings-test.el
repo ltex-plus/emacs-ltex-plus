@@ -490,11 +490,18 @@ handler builds the object in the document's own buffer."
     (should (equal (plist-get (lsp-ltex-plus--settings-object) :language)
                    (default-value 'lsp-ltex-plus-language)))))
 
-(ert-deftest ltex-plus-settings-test-enabled-lists-every-language-once ()
-  "`enabled' is the set of language ids the mode table knows, as a vector."
-  (let ((enabled (plist-get (lsp-ltex-plus--settings-object) :enabled)))
-    (should (vectorp enabled))
-    (should (equal (append enabled nil) (lsp-ltex-plus--enabled-languages)))))
+(ert-deftest ltex-plus-settings-test-enabled-names-the-document-s-own-language ()
+  "`enabled' is the one language id of the buffer the object is read in.
+The server skips a document whose id is not in the set, and its default
+set has no programming language; the client decides per buffer, so a
+document it opened is enabled by definition and nothing else needs
+naming.  Outside any document the answer is plain text, which the
+server never skips."
+  (with-temp-buffer
+    (setq major-mode 'python-mode)
+    (should (equal (plist-get (lsp-ltex-plus--settings-object) :enabled) ["python"])))
+  (with-temp-buffer
+    (should (equal (plist-get (lsp-ltex-plus--settings-object) :enabled) ["plaintext"]))))
 
 (provide 'ltex-plus-settings-test)
 ;;; ltex-plus-settings-test.el ends here
