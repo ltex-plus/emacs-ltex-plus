@@ -34,7 +34,7 @@ Despite the name, this package does not depend on `lsp-mode`, or on any other Em
 - **Historical:** until version 0.6.0 the client was built on `lsp-mode`, and was named after it, as `lsp-mode` clients are. Since version 1.0.0 it is not: it talks to the server itself, over the `jsonrpc` library that has been part of Emacs since 27.1, and shows what it finds through flymake, also part of Emacs. The name stayed so that existing configurations and the package's MELPA identity kept working.
 - **Technical:** the conversation with `ltex-ls-plus` still follows the Language Server Protocol, because that is what the server speaks. LSP is the protocol; `lsp-mode` is one of several Emacs frameworks that implement it, and this client no longer needs one.
 
-In practice: `package-install` or `straight` pulls in nothing else, Emacs starts as fast as before, and the client sits beside whatever else is checking your buffers, whether that is `eglot`, `lsp-mode` with another server, or nothing at all. If you avoided this package because of the `lsp-mode` dependency, that reason is gone.
+In practice: `package-install` or `straight` pulls in nothing else, Emacs starts as fast as before, and the client sits beside whatever else is checking your buffers, whether that is `eglot`, `lsp-mode` with another server, or nothing at all. If you avoided this package because of the `lsp-mode` dependency, that reason is gone. If you used it under `lsp-mode`, [Migrating from 0.6.0](#migrating-from-060) lists what to change.
 
 ## Offline Privacy vs. Online Power
 
@@ -461,7 +461,7 @@ An empty space means the parameter has no direct counterpart at that layer: typi
 >
 > **†** on `lsp-ltex-plus-major-modes` — this is a registry, not a customization knob. It is listed here for reference because the client reads from it, but users should not mutate it directly. To adjust which modes the dispatcher activates on, call `lsp-ltex-plus-enable-for-modes` with its `:restrict-to`, `:exclude`, and `:extend-to` keyword arguments (see [Customizing Supported Modes](#customizing-supported-modes)).
 
-Six settings from earlier releases — `lsp-ltex-plus-apply-kind-first-patch`, `lsp-ltex-plus-multi-root`, `lsp-ltex-plus-show-progress`, `lsp-ltex-plus-show-latency`, `lsp-ltex-plus-server-input-log` and `lsp-ltex-plus-server-output-log` — only meant something while the client ran on `lsp-mode`. They are still defined so an old configuration keeps loading, and marked obsolete; see the CHANGELOG for 1.0.0.
+Six settings from earlier releases only meant something while the client ran on `lsp-mode`; they are still defined, marked obsolete, and listed with their replacements under [Migrating from 0.6.0](#migrating-from-060).
 
 ### External settings
 
@@ -573,6 +573,25 @@ For tweaks that only make sense in a single document, LTeX+ supports **magic com
 The comment syntax depends on the file's language — e.g. `% LTeX: rules-=EN_QUOTES` in LaTeX, `<!-- LTeX: rules-=EN_QUOTES -->` in Markdown, `# LTeX: rules-=EN_QUOTES` in Org-mode. See the [LTeX+ magic-comments documentation](https://ltex-plus.github.io/ltex-plus/advanced-usage.html#magic-comments) for the full syntax table and the other settings they can change (language, picky rules, LaTeX/Markdown parser tweaks, …).
 
 **No per-file support for hidden false positives.** Magic comments cover rules and the dictionary, but not `hiddenFalsePositives` — if you need file-local false-positive suppression, there is no upstream mechanism for it. Use `:custom` or the `hidden-false-positives.eld` file for a global suppression, or disable the offending rule for the file instead.
+
+## Migrating from 0.6.0
+
+Version 1.0.0 replaced `lsp-mode` with the `jsonrpc` library bundled with Emacs (see [No `lsp-mode` required](#no-lsp-mode-required)). The settings that describe *what* to check are unchanged, and so are the word-list files; what changed is what surrounds the client. Go through your configuration once with this list:
+
+- **`lsp-mode` is no longer needed.** If you installed it only for LTeX+, you can remove it. Anything you set in `lsp-mode` for this client's sake — an entry in `lsp-disabled-clients`, a language-id tweak in `lsp-language-id-configuration`, an `lsp-diagnostics-provider` choice — can go as well; none of it is read.
+- **The commands have their own keys.** `lsp-mode` bound the code actions under its own prefix, `C-c l a a`. They now live under `lsp-ltex-plus-keymap-prefix`, `C-c " a` and friends (see [Usage](#usage)). Set the prefix if you want them elsewhere.
+- **Diagnostics come through flymake.** Under `lsp-mode` they went through flycheck when it was installed. Anything you tuned in flycheck for LTeX+ no longer applies; flymake needs nothing configured.
+- **One knob for responsiveness.** `lsp-idle-delay`, `flycheck-idle-change-delay` and `lsp-debounce-full-sync-notifications-interval` used to decide, between them, how soon after typing the buffer was checked. `lsp-ltex-plus-change-delay` (default 0.5 s) replaces all three.
+- **Six settings are retired.** They are still defined and marked obsolete, so a configuration that sets them keeps loading (the byte-compiler warns), but each line can be deleted:
+  - `lsp-ltex-plus-apply-kind-first-patch` patched `lsp-mode`'s message router; the `jsonrpc` library routes correctly and there is nothing to patch.
+  - `lsp-ltex-plus-multi-root` asked `lsp-mode` to reuse one server across projects; that is now simply how the connection works — one `ltex-ls-plus` per Emacs session.
+  - `lsp-ltex-plus-show-progress` silenced an `lsp-mode` spinner the client no longer has.
+  - `lsp-ltex-plus-show-latency` measured round trips through advice on `lsp-mode` internals; the `*ltex-ls-plus events*` buffer timestamps every message instead.
+  - `lsp-ltex-plus-server-input-log` and `lsp-ltex-plus-server-output-log` named `tee` log files under `/tmp`; the events buffer records the same traffic (see [Watching the wire](#watching-the-wire)).
+- **Server commands.** `M-x lsp-workspace-restart` becomes `M-x lsp-ltex-plus-restart-server`, and `M-x lsp-ltex-plus-shutdown-server` stops the server outright. `lsp-ltex-plus-reload-settings` works as before and tells the running server the configuration changed.
+- **Debugging.** With `lsp-ltex-plus-debug` on, the exchange is in `*ltex-ls-plus events*` and the client's own steps in `*lsp-ltex-plus::client*`; the server's Java log is in `*ltex-ls-plus stderr*`. `lsp-log-io` and the `*lsp-log*` buffer play no part.
+- **Word lists need no migration.** The four plist files under `~/.emacs.d/lsp-ltex-plus/` are read as before, and your `:custom` lists and project `.dir-locals.el` entries mean what they meant.
+- **Word completion is not requested any more.** It came from `lsp-mode`'s completion machinery. If you relied on it, please say so in an issue (see [Word Completion](#word-completion)).
 
 ## Troubleshooting
 
