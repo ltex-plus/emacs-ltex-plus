@@ -179,8 +179,8 @@ and call the command by name."
 ;; Activation is a few decisions and two calls.  The decisions are the
 ;; mode's own -- whether a programming-language buffer should be checked,
 ;; and registering a major mode it has not met -- and are taken before the
-;; server is involved at all.  The calls attach the flymake backend and
-;; open the document on the session's server, starting it if this is the
+;; server is involved at all.  The calls attach the diagnostics front-end
+;; and open the document on the session's server, starting it if this is the
 ;; first buffer to ask.  There is no workspace to find or join: one
 ;; server serves every buffer, and a buffer is either open on it or not.
 
@@ -204,6 +204,51 @@ where flyspell was already off is left as it was.")
   (when lsp-ltex-plus--stopped-flyspell
     (setq lsp-ltex-plus--stopped-flyspell nil)
     (flyspell-mode 1)))
+
+;; Which front-end shows the diagnostics is decided when the mode turns on
+;; and remembered per buffer, so that turning it off undoes the front-end
+;; actually in use, whatever the option says by then.
+
+(defvar-local lsp-ltex-plus--attached-provider nil
+  "The front-end showing this buffer's diagnostics: `flymake', `flycheck' or nil.")
+
+(defvar lsp-ltex-plus--warned-about-flycheck nil
+  "Non-nil once the user has been told flycheck was asked for but is absent.")
+
+(defun lsp-ltex-plus--chosen-provider ()
+  "Return the front-end to attach, honouring the option where it can be.
+Flycheck chosen but not installed falls back on flymake, with a warning
+the first time; the mode is not going to decline a buffer over a display
+preference."
+  (if (and (eq lsp-ltex-plus-diagnostics-provider 'flycheck)
+           (not (lsp-ltex-plus--flycheck-available-p)))
+      (progn
+        (unless lsp-ltex-plus--warned-about-flycheck
+          (setq lsp-ltex-plus--warned-about-flycheck t)
+          (display-warning 'lsp-ltex-plus
+                           (concat "`lsp-ltex-plus-diagnostics-provider' is `flycheck',"
+                                   " but flycheck is not installed;"
+                                   " diagnostics are shown through flymake")))
+        'flymake)
+    lsp-ltex-plus-diagnostics-provider))
+
+(defun lsp-ltex-plus--attach-diagnostics ()
+  "Attach the chosen diagnostics front-end to the current buffer.
+The choice is recorded before the front-end is touched, so that an
+attach that fails half-way is still undone by
+`lsp-ltex-plus--detach-diagnostics'."
+  (let ((provider (lsp-ltex-plus--chosen-provider)))
+    (setq lsp-ltex-plus--attached-provider provider)
+    (if (eq provider 'flycheck)
+        (lsp-ltex-plus--flycheck-attach)
+      (lsp-ltex-plus--flymake-attach))))
+
+(defun lsp-ltex-plus--detach-diagnostics ()
+  "Detach whichever diagnostics front-end this buffer was attached to."
+  (pcase lsp-ltex-plus--attached-provider
+    ('flycheck (lsp-ltex-plus--flycheck-detach))
+    ('flymake (lsp-ltex-plus--flymake-detach)))
+  (setq lsp-ltex-plus--attached-provider nil))
 
 (defun lsp-ltex-plus--register-major-mode (interactive)
   "Add the current `major-mode' to `lsp-ltex-plus-major-modes' if it is absent.
@@ -240,7 +285,7 @@ happened."
       (lsp-ltex-plus--start-checking))))
 
 (defun lsp-ltex-plus--start-checking ()
-  "Attach flymake and open the current buffer on the server, if it can be.
+  "Attach the front-end and open the buffer on the server, if it can be.
 The second half of `lsp-ltex-plus--enable', reached once the buffer's
 major mode is known to the table."
   (cond
@@ -266,11 +311,11 @@ major mode is known to the table."
           ;; output above it; set that up before the document opens.
           (when (lsp-ltex-plus--comint-buffer-p)
             (lsp-ltex-plus--comint-setup))
-          (lsp-ltex-plus--flymake-attach)
+          (lsp-ltex-plus--attach-diagnostics)
           (lsp-ltex-plus--open-document)
           (lsp-ltex-plus--stop-flyspell))
       (error
-       (lsp-ltex-plus--flymake-detach)
+       (lsp-ltex-plus--detach-diagnostics)
        (lsp-ltex-plus--comint-teardown)
        (lsp-ltex-plus--restore-flyspell)
        (setq lsp-ltex-plus-mode nil)
@@ -284,14 +329,14 @@ The server itself keeps running for the other buffers, and for this one
 should the mode come back; `lsp-ltex-plus-shutdown-server' stops it."
   (lsp-ltex-plus--log "Disabling LTeX+ in %s" (buffer-name))
   (lsp-ltex-plus--close-document)
-  (lsp-ltex-plus--flymake-detach)
+  (lsp-ltex-plus--detach-diagnostics)
   (lsp-ltex-plus--comint-teardown)
   (lsp-ltex-plus--restore-flyspell))
 
-;; A major-mode change discards the buffer's local variables, the flymake
-;; backend and its report function among them; clearing the underlines
-;; first is the only chance to do so.
-(add-hook 'lsp-ltex-plus--document-closing-functions #'lsp-ltex-plus--flymake-detach)
+;; A major-mode change discards the buffer's local variables, the front-end's
+;; backend and state among them; clearing the underlines first is the only
+;; chance to do so.
+(add-hook 'lsp-ltex-plus--document-closing-functions #'lsp-ltex-plus--detach-diagnostics)
 
 ;;;###autoload
 (define-minor-mode lsp-ltex-plus-mode
@@ -299,7 +344,8 @@ should the mode come back; `lsp-ltex-plus-shutdown-server' stops it."
 
 When enabled, the buffer is opened on the session's `ltex-ls-plus'
 server, started if this is the first buffer to need it, and the
-server's findings are shown through flymake.  Run
+server's findings are shown through flymake, or through flycheck when
+`lsp-ltex-plus-diagnostics-provider' says so.  Run
 `lsp-ltex-plus-mode-hook' to apply any per-buffer tweaks.
 
 If the current major mode is not in `lsp-ltex-plus-major-modes', it is

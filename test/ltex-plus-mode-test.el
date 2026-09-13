@@ -12,7 +12,7 @@
 ;; is tested with the binary stubbed away, so the mode aborts exactly
 ;; where it looks for the server.  What it does once it reaches for the
 ;; server is tested against the fake: opening and closing the document,
-;; attaching flymake, and the two commands that stop and restart the
+;; attaching the front-end, and the two commands that stop and restart the
 ;; server for every buffer at once.
 
 ;;; Code:
@@ -268,6 +268,96 @@ The server keeps running: another buffer may need it."
             (lsp-ltex-plus-mode 1)
             (lsp-ltex-plus-mode -1))
           (should-not flyspell-mode)
+          (should-not calls))))))
+
+;;;; -- Choosing the front-end -------------------------------------------------
+
+;; The flycheck side is stubbed here: what is under test is which
+;; front-end the mode reaches for and which it lets go of, not what
+;; flycheck does once reached.  `ltex-plus-flycheck-test.el' covers that.
+
+(defmacro ltex-plus-mode-test--with-stub-flycheck (available calls &rest body)
+  "Run BODY with flycheck AVAILABLE or not, its attach and detach stubbed.
+CALLS collects the stubs' names in the order they were called."
+  (declare (indent 2) (debug (form symbolp body)))
+  `(let ((,calls nil)
+         (lsp-ltex-plus--warned-about-flycheck nil))
+     (cl-letf (((symbol-function 'lsp-ltex-plus--flycheck-available-p)
+                (lambda () ,available))
+               ((symbol-function 'lsp-ltex-plus--flycheck-attach)
+                (lambda () (push 'attach ,calls)))
+               ((symbol-function 'lsp-ltex-plus--flycheck-detach)
+                (lambda () (push 'detach ,calls))))
+       ,@body)))
+
+(ert-deftest ltex-plus-mode-test-flymake-is-the-default-front-end ()
+  "With the option at its default, flymake is attached and flycheck untouched."
+  (ltex-plus-fake-with-connection
+    (ltex-plus-mode-test--with-file buffer "Text.\n"
+      (with-current-buffer buffer
+        (ltex-plus-mode-test--with-stub-flycheck t calls
+          (let ((lsp-ltex-plus-diagnostics-provider 'flymake))
+            (lsp-ltex-plus-mode 1)
+            (should (eq 'flymake lsp-ltex-plus--attached-provider))
+            (should (memq #'lsp-ltex-plus-flymake-backend flymake-diagnostic-functions))
+            (lsp-ltex-plus-mode -1))
+          (should-not lsp-ltex-plus--attached-provider)
+          (should-not (memq #'lsp-ltex-plus-flymake-backend flymake-diagnostic-functions))
+          (should-not calls))))))
+
+(ert-deftest ltex-plus-mode-test-flycheck-is-attached-when-chosen-and-present ()
+  "Asking for flycheck attaches it, not flymake, and detaches it with the mode."
+  (ltex-plus-fake-with-connection
+    (ltex-plus-mode-test--with-file buffer "Text.\n"
+      (with-current-buffer buffer
+        (ltex-plus-mode-test--with-stub-flycheck t calls
+          (let ((lsp-ltex-plus-diagnostics-provider 'flycheck))
+            (lsp-ltex-plus-mode 1)
+            (should (eq 'flycheck lsp-ltex-plus--attached-provider))
+            (should-not (memq #'lsp-ltex-plus-flymake-backend flymake-diagnostic-functions))
+            (should-not flymake-mode)
+            (lsp-ltex-plus-mode -1))
+          (should-not lsp-ltex-plus--attached-provider)
+          (should (equal (reverse calls) '(attach detach))))))))
+
+(ert-deftest ltex-plus-mode-test-flycheck-absent-falls-back-on-flymake-with-one-warning ()
+  "Flycheck chosen but not installed gives flymake, and says so once.
+Declining to check the buffer over a display preference would be the
+wrong trade; a warning on every buffer would be noise."
+  (ltex-plus-fake-with-connection
+    (ltex-plus-test-with-project '(("a.rst" . "Text.\n") ("b.rst" . "More.\n"))
+      (let ((warnings nil)
+            (inhibit-message t))
+        (ltex-plus-mode-test--with-stub-flycheck nil calls
+          (cl-letf (((symbol-function 'display-warning)
+                     (lambda (_type message &rest _) (push message warnings))))
+            (let ((lsp-ltex-plus-diagnostics-provider 'flycheck))
+              (dolist (name '("a.rst" "b.rst"))
+                (with-current-buffer (ltex-plus-test-visit (project-file name))
+                  (rst-mode)
+                  (lsp-ltex-plus-mode 1)
+                  (should (eq 'flymake lsp-ltex-plus--attached-provider))
+                  (should (memq #'lsp-ltex-plus-flymake-backend
+                                flymake-diagnostic-functions))))))
+          (should-not calls)
+          (should (= 1 (length warnings)))
+          (should (string-match-p "flycheck is not installed" (car warnings))))))))
+
+(ert-deftest ltex-plus-mode-test-detaching-undoes-the-front-end-actually-attached ()
+  "A buffer attached under flymake is detached from flymake, whatever the option now says.
+Changing the option while a buffer is being checked must not leave the
+old front-end's backend behind, nor poke a front-end that was never
+attached."
+  (ltex-plus-fake-with-connection
+    (ltex-plus-mode-test--with-file buffer "Text.\n"
+      (with-current-buffer buffer
+        (ltex-plus-mode-test--with-stub-flycheck t calls
+          (let ((lsp-ltex-plus-diagnostics-provider 'flymake))
+            (lsp-ltex-plus-mode 1))
+          (let ((lsp-ltex-plus-diagnostics-provider 'flycheck))
+            (lsp-ltex-plus-mode -1))
+          (should-not (memq #'lsp-ltex-plus-flymake-backend flymake-diagnostic-functions))
+          (should-not lsp-ltex-plus--attached-provider)
           (should-not calls))))))
 
 (ert-deftest ltex-plus-mode-test-shutting-the-server-down-switches-the-mode-off ()
