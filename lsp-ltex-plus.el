@@ -141,21 +141,6 @@ starts, such as the executable or the Java to run it with; those need
       (message "[lsp-ltex-plus] Settings reloaded and pushed to the server.")
     (message "[lsp-ltex-plus] Settings reloaded; no server is running.")))
 
-;; Superseded names.  `-reload-external-settings' described only the
-;; disk-reload half (v0.3.0, renamed in v0.3.1); `-reload-and-notify-server'
-;; then described the disk reload and the push, but not the re-registration
-;; that a *Setup-only* setting once needed -- so users had to know which
-;; of two commands to reach for.  There is now one.
-(define-obsolete-function-alias 'lsp-ltex-plus-reload-and-notify-server
-  #'lsp-ltex-plus-reload-settings
-  "0.5.0"
-  "Merged with the setup path, so one command applies any setting change.")
-
-(define-obsolete-function-alias 'lsp-ltex-plus-reload-external-settings
-  #'lsp-ltex-plus-reload-settings
-  "0.3.1"
-  "Renamed; see `lsp-ltex-plus-reload-settings'.")
-
 ;;;; -- Keymap -----------------------------------------------------------------
 
 ;; A prefix of the package's own, so that the bindings never collide with

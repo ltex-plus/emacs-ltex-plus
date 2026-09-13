@@ -296,10 +296,5 @@ is installed only once."
     (setq lsp-ltex-plus--enabled-modes (mapcar #'car pairs))
     (add-hook 'after-change-major-mode-hook #'lsp-ltex-plus--maybe-activate)))
 
-;;;###autoload
-(define-obsolete-function-alias 'lsp-ltex-plus-install-hooks
-  #'lsp-ltex-plus-enable-for-modes "0.2.0")
-
-
 (provide 'lsp-ltex-plus-bootstrap)
 ;;; lsp-ltex-plus-bootstrap.el ends here

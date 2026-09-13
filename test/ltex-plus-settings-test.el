@@ -264,14 +264,6 @@ Renaming would silently discard whichever file lost."
 
 ;;;; -- The reload command -----------------------------------------------------
 
-(ert-deftest ltex-plus-settings-test-old-reload-names-still-resolve ()
-  "Both commands the reload replaced survive as obsolete aliases."
-  (dolist (name '(lsp-ltex-plus-reload-and-notify-server
-                  lsp-ltex-plus-reload-external-settings))
-    (should (fboundp name))
-    (should (eq (indirect-function name)
-                (indirect-function 'lsp-ltex-plus-reload-settings)))))
-
 (ert-deftest ltex-plus-settings-test-reload-rereads-the-files ()
   "A hand-edited global file is read back into the merged view by the reload."
   (ltex-plus-test-reset)
