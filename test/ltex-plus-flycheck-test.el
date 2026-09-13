@@ -129,6 +129,24 @@ server sent would not be the one shown."
         (should-not (memq #'lsp-ltex-plus--flycheck-recheck
                           flycheck-after-syntax-check-hook))))))
 
+(ert-deftest ltex-plus-flycheck-test-a-chained-checker-that-cannot-start-is-reported ()
+  "A check flycheck cannot finish is reported, and does not unwind the caller.
+Flycheck signals a plain error when a checker chained after this one
+has no executable; the publish handler that asked for the check must
+survive it, and the user must be told which buffer and why."
+  (with-temp-buffer
+    (setq-local flycheck-mode t)
+    (let ((said nil))
+      (cl-letf (((symbol-function 'flycheck-running-p) (lambda () nil))
+                ((symbol-function 'flycheck-buffer)
+                 (lambda () (error "Cannot find the executable of checker proselint")))
+                ((symbol-function 'message)
+                 (lambda (fmt &rest args) (push (apply #'format fmt args) said))))
+        (lsp-ltex-plus--flycheck-refresh))
+      (should (= 1 (length said)))
+      (should (string-match-p "could not finish checking" (car said)))
+      (should (string-match-p "proselint" (car said))))))
+
 (ert-deftest ltex-plus-flycheck-test-attaching-selects-the-checker-and-detaching-restores ()
   "Attaching makes this the buffer's checker and turns flycheck on.
 Detaching puts the previous selection back and leaves `flycheck-mode'

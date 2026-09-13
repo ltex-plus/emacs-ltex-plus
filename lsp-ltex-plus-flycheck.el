@@ -155,18 +155,33 @@ One-shot, on `flycheck-after-syntax-check-hook'."
   (remove-hook 'flycheck-after-syntax-check-hook #'lsp-ltex-plus--flycheck-recheck t)
   (lsp-ltex-plus--flycheck-refresh))
 
+(defun lsp-ltex-plus--flycheck-check-now ()
+  "Run `flycheck-buffer' in the current buffer, reporting what it cannot finish.
+One thing can come out of `flycheck-buffer' here as a signal: a checker
+chained after this one that cannot be started, typically because its
+executable has gone.  Flycheck raises that as a plain `error' -- it
+defines no condition of its own -- after recording the failed check
+itself, and by then this checker's errors are already on show.
+Flycheck's own automatic checks turn that error into a message; so
+does this, naming the buffer."
+  (condition-case err
+      (flycheck-buffer)
+    (error
+     (lsp-ltex-plus--log "flycheck-buffer failed in %s: %s"
+                         (buffer-name) (error-message-string err))
+     (message "[lsp-ltex-plus] flycheck could not finish checking %s: %s"
+              (buffer-name) (error-message-string err)))))
+
 (defun lsp-ltex-plus--flycheck-refresh ()
   "Ask flycheck to check the current buffer again, now or when it is free.
 `flycheck-buffer' does nothing while a check is running -- another
 checker chained after this one may be -- so then the request waits on
 `flycheck-after-syntax-check-hook' and is made once, when that check
-finishes.  A checker that fails to start is flycheck's business, not a
-reason for this package to signal."
+finishes."
   (when (bound-and-true-p flycheck-mode)
     (if (flycheck-running-p)
         (add-hook 'flycheck-after-syntax-check-hook #'lsp-ltex-plus--flycheck-recheck nil t)
-      (with-demoted-errors "[lsp-ltex-plus] flycheck could not check: %S"
-        (flycheck-buffer)))))
+      (lsp-ltex-plus--flycheck-check-now))))
 
 (defun lsp-ltex-plus--flycheck-report (buffer)
   "Have flycheck read BUFFER's stored diagnostics, if it shows them.
