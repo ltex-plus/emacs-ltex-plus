@@ -69,7 +69,8 @@ working directory and from any clone.")
   (mapcar (lambda (name) (expand-file-name name ltex-plus-test-repo-root))
           '("lsp-ltex-plus-bootstrap.el" "lsp-ltex-plus-settings.el"
             "lsp-ltex-plus-conn.el" "lsp-ltex-plus-diag.el"
-            "lsp-ltex-plus-actions.el" "lsp-ltex-plus-comint.el" "lsp-ltex-plus.el"))
+            "lsp-ltex-plus-flycheck.el" "lsp-ltex-plus-actions.el"
+            "lsp-ltex-plus-comint.el" "lsp-ltex-plus.el"))
   "The package sources this suite tests, in load order.")
 
 (dolist (file ltex-plus-test-package-files)
