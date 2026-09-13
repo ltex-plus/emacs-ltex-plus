@@ -57,10 +57,11 @@
   ;; The entries are data: a mode the running Emacs does not have -- a
   ;; third-party mode that is not installed -- is a symbol nothing ever
   ;; matches, and costs nothing.  The tree-sitter modes Emacs 29.1 ships
-  ;; are listed like any other; those that arrived with 30.1 and 31.1 are
-  ;; added below behind `fboundp', not because the table needs it but
-  ;; because `package-lint' asks for a guard on any symbol newer than the
-  ;; declared Emacs floor.
+  ;; are listed like any other; the modes that arrived with 30.1 and 31.1
+  ;; (`lua-mode' among them, third-party until then) are added below
+  ;; behind `fboundp', not because the table needs it but because
+  ;; `package-lint' asks for a guard on any symbol newer than the declared
+  ;; Emacs floor.
   (append
    ;; Markup languages (PROGRAMMING-P = nil)
    '((asciidoc-mode          "asciidoc"         nil)
@@ -125,7 +126,6 @@
      (kotlin-mode            "kotlin"           t)
      (kotlin-ts-mode         "kotlin"           t)
      (lisp-mode              "lisp"             t)
-     (lua-mode               "lua"              t)
      (matlab-mode            "matlab"           t)
      (perl-mode              "perl"             t)
      (perl6-mode             "perl6"            t)
@@ -159,6 +159,7 @@
    (when (fboundp 'lua-ts-mode)      '((lua-ts-mode      "lua"      t)))
    (when (fboundp 'php-ts-mode)      '((php-ts-mode      "php"      t)))
    ;; Emacs 31.1:
+   (when (fboundp 'lua-mode)         '((lua-mode         "lua"      t)))
    (when (fboundp 'markdown-ts-mode) '((markdown-ts-mode "markdown" nil)))
    (when (fboundp 'mhtml-ts-mode)    '((mhtml-ts-mode    "html"     nil))))
   "List of (MAJOR-MODE LANGUAGE-ID PROGRAMMING-P) entries for lsp-ltex-plus.

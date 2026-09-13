@@ -810,9 +810,8 @@ switches the mode off in the buffers waiting for it."
                (if version
                    (format "ltex-ls-plus %s is older than %s, which this package needs."
                            version lsp-ltex-plus-minimum-server-version)
-                 (format (concat "This ltex-ls-plus gave no version, so it predates"
-                                 " 18.7.0, the first release that reports one;"
-                                 " this package needs %s or newer.")
+                 (format "This ltex-ls-plus gave no version, so it predates 18.7.0, \
+the first release that reports one; this package needs %s or newer."
                          lsp-ltex-plus-minimum-server-version))
                (if stopping " Stopping the server." " Some features may not work.")
                "  See https://github.com/ltex-plus/emacs-ltex-plus/#server-installation"
