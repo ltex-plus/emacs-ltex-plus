@@ -158,22 +158,23 @@ Emacs process happens to be sitting in."
                      (lsp-ltex-plus--effective-plist 'enabled-rules))
                    (lsp-ltex-plus--global-plist 'enabled-rules)))))
 
-;;;; -- Both replies agree -----------------------------------------------------
+;;;; -- One reply carries the lists --------------------------------------------
 
-(ert-deftest ltex-plus-project-test-both-replies-see-the-same-lists ()
-  "The custom reply and the standard one cannot disagree.
-Both go through `lsp-ltex-plus--effective-plist'.  The server prefers
-the custom one, so a divergence would be invisible until someone turned
-the custom capability off."
+(ert-deftest ltex-plus-project-test-the-lists-travel-only-over-the-custom-request ()
+  "The project-merged lists are in the custom reply and nowhere else.
+Once the client has advertised the custom capability the server reads
+the four lists from `ltex/workspaceSpecificConfiguration' alone, so the
+standard settings object does not carry them: a second copy could only
+fall out of step with the first."
   (ltex-plus-project-test--in-project
     (with-current-buffer top
       (should (equal (ltex-plus-test-words
                       (plist-get (lsp-ltex-plus--workspace-specific-entry)
                                  :dictionary))
                      '("everywhere" "Wittgenstein")))
-      (should (equal (ltex-plus-test-words
-                      (plist-get (lsp-ltex-plus--settings-object) :dictionary))
-                     '("everywhere" "Wittgenstein"))))))
+      (let ((object (lsp-ltex-plus--settings-object)))
+        (dolist (key '(:dictionary :enabledRules :disabledRules :hiddenFalsePositives))
+          (should-not (plist-member object key)))))))
 
 ;;;; -- The modification-time cache --------------------------------------------
 

@@ -136,14 +136,14 @@ A section this client does not have is answered with null, which is
 what other clients answer and what the server is written to accept."
   (with-temp-buffer
     (setq-local lsp-ltex-plus-language "fr")
+    (setq-local lsp-ltex-plus-ltex-ls-log-level "finest")
     (should (equal (plist-get (plist-get (lsp-ltex-plus--configuration-section nil) :ltex)
                               :language)
                    "fr"))
     (should (equal (plist-get (lsp-ltex-plus--configuration-section "ltex") :language)
                    "fr"))
     (should (equal (lsp-ltex-plus--configuration-section "ltex.language") "fr"))
-    (should (equal (lsp-ltex-plus--configuration-section "ltex.trace.server")
-                   lsp-ltex-plus-trace-server))
+    (should (equal (lsp-ltex-plus--configuration-section "ltex.ltex-ls.logLevel") "finest"))
     (should-not (lsp-ltex-plus--configuration-section "ltex.no.such.thing"))
     (should-not (lsp-ltex-plus--configuration-section "python"))))
 

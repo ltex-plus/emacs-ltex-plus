@@ -1136,17 +1136,18 @@ value is what goes out when this is called in the document's buffer.
 
 Every JSON type is made explicit at this boundary: an unset string is
 sent as \"\", a boolean as true or false rather than null, and an empty
-object as `{}'.  The four language-keyed lists go through
-`lsp-ltex-plus--effective-plist', the same way as in
-`lsp-ltex-plus--workspace-specific-entry', so the two replies can never
-disagree about a project's lists."
+object as `{}'.
+
+Only what the server reads is here (checked against its source, 18.7.0).
+The four language-keyed lists are absent: once the client has advertised
+the custom capability the server takes them from
+`ltex/workspaceSpecificConfiguration' alone, see
+`lsp-ltex-plus--workspace-specific-entry'.  The executable's path, the
+Java path and heap sizes, and the trace level are the client's own
+business -- the launcher and the `initialize' request see them -- and
+the server would drop them unread."
   (list :enabled (vconcat (lsp-ltex-plus--enabled-languages))
         :language lsp-ltex-plus-language
-        :dictionary (lsp-ltex-plus--obj-or-empty (lsp-ltex-plus--effective-plist 'dictionary))
-        :enabledRules (lsp-ltex-plus--obj-or-empty (lsp-ltex-plus--effective-plist 'enabled-rules))
-        :disabledRules (lsp-ltex-plus--obj-or-empty (lsp-ltex-plus--effective-plist 'disabled-rules))
-        :hiddenFalsePositives (lsp-ltex-plus--obj-or-empty
-                               (lsp-ltex-plus--effective-plist 'hidden-false-positives))
         :bibtex (list :fields (lsp-ltex-plus--obj-or-empty lsp-ltex-plus-bibtex-fields))
         :latex (list :commands (lsp-ltex-plus--obj-or-empty lsp-ltex-plus-latex-commands)
                      :environments (lsp-ltex-plus--obj-or-empty lsp-ltex-plus-latex-environments))
@@ -1158,13 +1159,12 @@ disagree about a project's lists."
                                :languageModel (lsp-ltex-plus--str
                                                lsp-ltex-plus-additional-rules-language-model))
         :languageToolHttpServerUri (lsp-ltex-plus--str lsp-ltex-plus-lt-server-uri)
-        :languageToolOrg (list :username (lsp-ltex-plus--str lsp-ltex-plus-lt-username))
-        :ltex-ls (list :languageToolOrgApiKey (lsp-ltex-plus--str lsp-ltex-plus-lt-api-key)
-                       :path (lsp-ltex-plus--str lsp-ltex-plus-ltex-ls-path)
-                       :logLevel lsp-ltex-plus-ltex-ls-log-level)
-        :java (list :path (lsp-ltex-plus--str lsp-ltex-plus-java-path)
-                    :initialHeapSize lsp-ltex-plus-java-initial-heap
-                    :maximumHeapSize lsp-ltex-plus-java-max-heap)
+        ;; `languageToolOrg.apiKey' is the key the server reads first; the
+        ;; `ltex-ls.languageToolOrgApiKey' this client sent up to 1.0.0 has
+        ;; been the deprecated fallback since server 14.1.0.
+        :languageToolOrg (list :username (lsp-ltex-plus--str lsp-ltex-plus-lt-username)
+                               :apiKey (lsp-ltex-plus--str lsp-ltex-plus-lt-api-key))
+        :ltex-ls (list :logLevel lsp-ltex-plus-ltex-ls-log-level)
         :sentenceCacheSize lsp-ltex-plus-sentence-cache-size
         :maxRequestSize lsp-ltex-plus-max-request-size
         :paragraphCacheTtlMinutes lsp-ltex-plus-paragraph-cache-ttl-minutes
@@ -1173,8 +1173,7 @@ disagree about a project's lists."
         :diagnosticSeverity lsp-ltex-plus-diagnostic-severity
         :checkFrequency lsp-ltex-plus-check-frequency
         :clearDiagnosticsWhenClosingFile (lsp-ltex-plus--bool
-                                          lsp-ltex-plus-clear-diagnostics-when-closing-file)
-        :trace (list :server lsp-ltex-plus-trace-server)))
+                                          lsp-ltex-plus-clear-diagnostics-when-closing-file)))
 
 (provide 'lsp-ltex-plus-settings)
 ;;; lsp-ltex-plus-settings.el ends here

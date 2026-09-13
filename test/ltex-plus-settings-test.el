@@ -425,16 +425,16 @@ Its didOpen never goes out, and its mode line does not claim a check."
   '("additionalRules.enablePickyRules" "additionalRules.languageModel"
     "additionalRules.motherTongue" "bibtex.fields" "checkFrequency"
     "clearDiagnosticsWhenClosingFile" "completionEnabled" "diagnosticSeverity"
-    "dictionary" "disabledRules" "enabled" "enabledRules" "hiddenFalsePositives"
-    "java.initialHeapSize" "java.maximumHeapSize" "java.path"
-    "languageToolHttpServerUri" "languageToolOrg.username" "language"
-    "latex.commands" "latex.environments" "ltex-ls.languageToolOrgApiKey"
-    "ltex-ls.logLevel" "ltex-ls.path" "markdown.nodes" "maxRequestSize"
-    "paragraphCacheEnabled" "paragraphCacheTtlMinutes" "sentenceCacheSize"
-    "trace.server")
+    "enabled" "languageToolHttpServerUri" "languageToolOrg.apiKey"
+    "languageToolOrg.username" "language" "latex.commands"
+    "latex.environments" "ltex-ls.logLevel" "markdown.nodes"
+    "maxRequestSize" "paragraphCacheEnabled" "paragraphCacheTtlMinutes"
+    "sentenceCacheSize")
   "Every `ltex.*' setting the client sends, in the server's dotted spelling.
-The list the README documents; a key added to the object without being
-added here is one nobody wrote down.")
+Each is one the server's own settings parser reads; a key added to the
+object without being added here is one nobody checked against the
+server.  The four language-keyed lists are deliberately absent: they
+travel over the server's own request.")
 
 (defun ltex-plus-settings-test--keys (object)
   "Return the dotted leaf paths of the nested settings OBJECT, sorted.
@@ -468,15 +468,16 @@ An unset string goes out as \"\", a false boolean as false, and an empty
 list-valued setting as an empty object, never as null."
   (ltex-plus-test-reset)
   (let ((lsp-ltex-plus-lt-server-uri nil)
-        (lsp-ltex-plus-java-path nil)
+        (lsp-ltex-plus-lt-api-key nil)
         (lsp-ltex-plus-completion-enabled nil)
-        (lsp-ltex-plus-bibtex-fields nil))
+        (lsp-ltex-plus-bibtex-fields nil)
+        (lsp-ltex-plus-latex-commands nil))
     (let ((object (lsp-ltex-plus--settings-object)))
       (should (equal (plist-get object :languageToolHttpServerUri) ""))
-      (should (equal (plist-get (plist-get object :java) :path) ""))
+      (should (equal (plist-get (plist-get object :languageToolOrg) :apiKey) ""))
       (should (eq (plist-get object :completionEnabled) :json-false))
       (should (hash-table-p (plist-get (plist-get object :bibtex) :fields)))
-      (should (hash-table-p (plist-get object :dictionary))))))
+      (should (hash-table-p (plist-get (plist-get object :latex) :commands))))))
 
 (ert-deftest ltex-plus-settings-test-the-object-is-read-in-the-current-buffer ()
   "A buffer-local value is what goes out when the object is built there.
