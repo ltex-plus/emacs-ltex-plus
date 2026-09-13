@@ -514,6 +514,23 @@ code around the comments LTeX+ checks."
   :safe #'booleanp
   :group 'lsp-ltex-plus)
 
+(defun lsp-ltex-plus--diagnostics-provider-p (value)
+  "Non-nil when VALUE is one of the `lsp-ltex-plus-diagnostics-provider' choices."
+  (memq value '(flymake flycheck)))
+
+(defcustom lsp-ltex-plus-diagnostics-provider 'flymake
+  "Which front-end shows the server's diagnostics: `flymake' or `flycheck'.
+Flymake, the default, is part of Emacs and needs nothing installed.
+Flycheck must be installed separately; when it is chosen but cannot be
+loaded, flymake is used and a warning says so, once per session.  Read
+when the mode is turned on in a buffer, so a change applies to the
+buffers checked from then on; turning `lsp-ltex-plus-mode' off and on
+again moves a buffer that is already being checked."
+  :type '(choice (const :tag "Flymake (part of Emacs)" flymake)
+                 (const :tag "Flycheck" flycheck))
+  :safe #'lsp-ltex-plus--diagnostics-provider-p
+  :group 'lsp-ltex-plus)
+
 (defcustom lsp-ltex-plus-check-comint-input t
   "When non-nil, grammar-check the active input region of comint buffers.
 In a `comint-mode' buffer (e.g. `agent-shell-mode', a shell, a REPL) only

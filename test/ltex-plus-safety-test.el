@@ -103,6 +103,13 @@ read from and written to, without a prompt.  Modelled on AUCTeX's
   (should-not (lsp-ltex-plus--save-additions-to-p 'sometimes))
   (should-not (lsp-ltex-plus--save-additions-to-p nil)))
 
+(ert-deftest ltex-plus-safety-test-diagnostics-provider-shape ()
+  "Only the two front-ends are accepted."
+  (should (lsp-ltex-plus--diagnostics-provider-p 'flymake))
+  (should (lsp-ltex-plus--diagnostics-provider-p 'flycheck))
+  (should-not (lsp-ltex-plus--diagnostics-provider-p 'flyspell))
+  (should-not (lsp-ltex-plus--diagnostics-provider-p nil)))
+
 ;;;; -- Which predicate is on which setting ------------------------------------
 
 (ert-deftest ltex-plus-safety-test-qualified-predicates-are-in-place ()
@@ -150,6 +157,7 @@ silently do nothing would say it works."
             lsp-ltex-plus-check-fileless-buffers
             lsp-ltex-plus-check-comint-input
             lsp-ltex-plus-disable-flyspell
+            lsp-ltex-plus-diagnostics-provider
             lsp-ltex-plus-additional-rules-enable-picky-rules
             lsp-ltex-plus-additional-rules-mother-tongue
             lsp-ltex-plus-additional-rules-language-model
