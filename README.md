@@ -461,7 +461,7 @@ An empty space means the parameter has no direct counterpart at that layer: typi
 >
 > **†** on `lsp-ltex-plus-major-modes` — this is a registry, not a customization knob. It is listed here for reference because the client reads from it, but users should not mutate it directly. To adjust which modes the dispatcher activates on, call `lsp-ltex-plus-enable-for-modes` with its `:restrict-to`, `:exclude`, and `:extend-to` keyword arguments (see [Customizing Supported Modes](#customizing-supported-modes)).
 
-Six settings from earlier releases only meant something while the client ran on `lsp-mode`; they are still defined, marked obsolete, and listed with their replacements under [Migrating from 0.6.0](#migrating-from-060).
+Six settings from earlier releases only meant something while the client ran on `lsp-mode` and no longer exist; [Migrating from 0.6.0](#migrating-from-060) lists them with where their function went.
 
 ### External settings
 
@@ -582,7 +582,7 @@ Version 1.0.0 replaced `lsp-mode` with the `jsonrpc` library bundled with Emacs 
 - **The commands have their own keys.** `lsp-mode` bound the code actions under its own prefix, `C-c l a a`. They now live under `lsp-ltex-plus-keymap-prefix`, `C-c " a` and friends (see [Usage](#usage)). Set the prefix if you want them elsewhere.
 - **Diagnostics come through flymake.** Under `lsp-mode` they went through flycheck when it was installed. Anything you tuned in flycheck for LTeX+ no longer applies; flymake needs nothing configured.
 - **One knob for responsiveness.** `lsp-idle-delay`, `flycheck-idle-change-delay` and `lsp-debounce-full-sync-notifications-interval` used to decide, between them, how soon after typing the buffer was checked. `lsp-ltex-plus-change-delay` (default 0.5 s) replaces all three.
-- **Six settings are retired.** They are still defined and marked obsolete, so a configuration that sets them keeps loading (the byte-compiler warns), but each line can be deleted:
+- **Six settings are gone.** Setting one does nothing any more; delete each line:
   - `lsp-ltex-plus-apply-kind-first-patch` patched `lsp-mode`'s message router; the `jsonrpc` library routes correctly and there is nothing to patch.
   - `lsp-ltex-plus-multi-root` asked `lsp-mode` to reuse one server across projects; that is now simply how the connection works — one `ltex-ls-plus` per Emacs session.
   - `lsp-ltex-plus-show-progress` silenced an `lsp-mode` spinner the client no longer has.

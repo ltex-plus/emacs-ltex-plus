@@ -535,48 +535,6 @@ is sent at all.  See `lsp-ltex-plus-comint.el'."
 - \"messages\": Log the type of requests and responses.
 - \"verbose\": Log the type and contents of requests and responses.")
 
-;;;; -- Retired settings -------------------------------------------------------
-
-;; Six settings meant something only while the client ran on lsp-mode:
-;; two named the tee log files that duplicated what the jsonrpc events
-;; buffer now records, one silenced lsp-mode's progress spinner, one
-;; measured latency through advice on lsp-mode internals, one asked
-;; lsp-mode to reuse a workspace across roots -- which is simply how the
-;; one connection per session works now -- and one applied protocol
-;; patches to lsp-mode's message router, whose bug jsonrpc does not have.
-;; They stay defined so that a configuration setting them keeps loading,
-;; and are marked obsolete so that Customize and the byte-compiler say so.
-
-(defvar lsp-ltex-plus-server-input-log nil
-  "Obsolete; the jsonrpc events buffer records the exchange.")
-(make-obsolete-variable 'lsp-ltex-plus-server-input-log
-                        "the `*ltex-ls-plus events*' buffer records the exchange." "1.0.0")
-
-(defvar lsp-ltex-plus-server-output-log nil
-  "Obsolete; the jsonrpc events buffer records the exchange.")
-(make-obsolete-variable 'lsp-ltex-plus-server-output-log
-                        "the `*ltex-ls-plus events*' buffer records the exchange." "1.0.0")
-
-(defvar lsp-ltex-plus-show-progress t
-  "Obsolete; there is no progress spinner to silence.")
-(make-obsolete-variable 'lsp-ltex-plus-show-progress
-                        "the client shows no progress indicator." "1.0.0")
-
-(defvar lsp-ltex-plus-show-latency nil
-  "Obsolete; the latency benchmark went with lsp-mode.")
-(make-obsolete-variable 'lsp-ltex-plus-show-latency
-                        "the jsonrpc events buffer carries timestamps." "1.0.0")
-
-(defvar lsp-ltex-plus-multi-root t
-  "Obsolete; one server serves every buffer of the session.")
-(make-obsolete-variable 'lsp-ltex-plus-multi-root
-                        "one server always serves every buffer of the session." "1.0.0")
-
-(defvar lsp-ltex-plus-apply-kind-first-patch nil
-  "Obsolete; the client no longer runs on lsp-mode.")
-(make-obsolete-variable 'lsp-ltex-plus-apply-kind-first-patch
-                        "the client runs on jsonrpc, which routes messages correctly." "1.0.0")
-
 ;;;; -- Internal State & Logging -----------------------------------------------
 
 (defvar lsp-ltex-plus--start-time nil
