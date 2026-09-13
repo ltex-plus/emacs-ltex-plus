@@ -345,13 +345,20 @@ server was asked to exit or died on its own."
 (defun lsp-ltex-plus--shutdown-connection (&optional conn)
   "Stop the server behind CONN, or the session's connection when nil.
 Follows the protocol's two steps, the `shutdown' request and the `exit'
-notification, and then waits for the process to end; a server that does
-not answer `shutdown' is given three seconds before the process is
-ended regardless."
+notification, and then waits for the process to end.  A server that
+does not answer `shutdown' within three seconds, or answers it with an
+error, is told so in the echo area and ended regardless; the `exit'
+notification is sent only to a server still running by then, since
+one that has already gone cannot be written to."
   (when-let* ((conn (or conn (lsp-ltex-plus--live-connection))))
     (when (jsonrpc-running-p conn)
-      (ignore-errors (jsonrpc-request conn 'shutdown nil :timeout 3))
-      (ignore-errors (jsonrpc-notify conn 'exit nil)))
+      (condition-case err
+          (jsonrpc-request conn 'shutdown nil :timeout 3)
+        (jsonrpc-error
+         (lsp-ltex-plus--log "shutdown request failed: %s" (error-message-string err))
+         (message "[lsp-ltex-plus] ltex-ls-plus did not answer `shutdown'; ending the process")))
+      (when (jsonrpc-running-p conn)
+        (jsonrpc-notify conn 'exit nil)))
     (jsonrpc-shutdown conn)))
 
 ;;;; -- Documents ---------------------------------------------------------------

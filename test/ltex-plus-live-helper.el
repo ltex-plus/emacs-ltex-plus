@@ -55,12 +55,17 @@ absence as a bug in the client.")
 (defun ltex-plus-live-server-version ()
   "Return the version the installed `ltex-ls-plus' reports, or nil.
 Read from the binary, so that it can be compared with what the running
-server says about itself."
+server says about itself.  A binary the kernel refuses to run -- wrong
+architecture, a script whose interpreter is missing -- is reported and
+counts as no version, which makes the suite skip and say so."
   (when-let* ((executable (lsp-ltex-plus--server-executable))
               (output (with-output-to-string
                         (with-current-buffer standard-output
-                          (ignore-errors
-                            (call-process executable nil t nil "--version"))))))
+                          (condition-case err
+                              (call-process executable nil t nil "--version")
+                            (file-error
+                             (message "[live] Cannot run %s: %s"
+                                      executable (error-message-string err))))))))
     ;; The binary answers with JSON: {"ltex-ls": "18.7.1-alpha.32+...", ...}
     (when (string-match "\"ltex-ls\"[[:space:]]*:[[:space:]]*\"\\([^\"]+\\)\"" output)
       (match-string 1 output))))
@@ -219,7 +224,7 @@ nothing rather than that it has not looked yet."
       (kill-buffer buffer)))
   (setq ltex-plus-live--buffers nil)
   (when (lsp-ltex-plus--live-connection)
-    (ignore-errors (lsp-ltex-plus--shutdown-connection)))
+    (lsp-ltex-plus--shutdown-connection))
   (when (and ltex-plus-live--root (file-directory-p ltex-plus-live--root))
     (delete-directory ltex-plus-live--root t))
   (setq ltex-plus-live--root nil))

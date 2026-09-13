@@ -74,6 +74,10 @@ a client that refuses the pull pass every test.")
 (defvar ltex-plus-fake-server-version "18.7.1"
   "The version the fake reports in `serverInfo'.")
 
+(defvar ltex-plus-fake-refuse-shutdown nil
+  "When non-nil, the fake answers `shutdown' with an error instead of null.
+For testing that the client ends the process regardless.")
+
 (defvar ltex-plus-fake-code-actions []
   "The vector of code actions the fake returns to `textDocument/codeAction'.")
 
@@ -132,7 +136,9 @@ the protocol default the client declared."
            :serverInfo (append (list :name "ltex-ls-plus")
                                (and ltex-plus-fake-server-version
                                     (list :version ltex-plus-fake-server-version)))))
-    ('shutdown nil)
+    ('shutdown
+     (when ltex-plus-fake-refuse-shutdown
+       (jsonrpc-error :code -32603 :message "Not now")))
     ('textDocument/codeAction ltex-plus-fake-code-actions)
     (_ (jsonrpc-error :code -32601 :message (format "Unknown method %s" method)))))
 
@@ -233,10 +239,10 @@ Stops a fake that is already up, and resets everything it records."
 (defun ltex-plus-fake-stop ()
   "Stop the fake and drop its connection to the client."
   (when ltex-plus-fake-peer
-    (ignore-errors (delete-process (jsonrpc--process ltex-plus-fake-peer)))
+    (delete-process (jsonrpc--process ltex-plus-fake-peer))
     (setq ltex-plus-fake-peer nil))
   (when ltex-plus-fake-listener
-    (ignore-errors (delete-process ltex-plus-fake-listener))
+    (delete-process ltex-plus-fake-listener)
     (setq ltex-plus-fake-listener nil)))
 
 (defun ltex-plus-fake--connect (name _command _root)
@@ -267,7 +273,7 @@ starts from nothing."
                     #'ltex-plus-fake--connect))
            ,@body)
        (when (lsp-ltex-plus--live-connection)
-         (ignore-errors (lsp-ltex-plus--shutdown-connection)))
+         (lsp-ltex-plus--shutdown-connection))
        (setq lsp-ltex-plus--connection nil)
        (ltex-plus-fake-stop))))
 

@@ -45,7 +45,7 @@ is on and BODY starts once the document is open."
              (ltex-plus-fake-wait-for
               (lambda () (ltex-plus-fake-received 'textDocument/didOpen)))
              ,@body)
-         (ignore-errors (delete-process process))
+         (delete-process process)
          (when (buffer-live-p ,var)
            (with-current-buffer ,var (set-buffer-modified-p nil))
            (kill-buffer ,var))))))
@@ -163,7 +163,7 @@ mark, so without this the reply would be checked as if typed."
               (lsp-ltex-plus-mode 1))
             (should-not lsp-ltex-plus-mode)
             (should-not lsp-ltex-plus--comint-active))
-        (ignore-errors (delete-process process))
+        (delete-process process)
         (kill-buffer buffer)))))
 
 (provide 'ltex-plus-comint-test)

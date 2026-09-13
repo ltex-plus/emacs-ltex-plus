@@ -236,6 +236,23 @@ global ones, since the push names no document."
         (should-not (lsp-ltex-plus--live-connection))
         (should (eq closed conn))))))
 
+(ert-deftest ltex-plus-conn-test-a-server-that-refuses-shutdown-is-still-ended ()
+  "A `shutdown' answered with an error is reported, and the process ended anyway.
+The user asked for the server to stop; a server that will not agree is
+stopped regardless, and told about rather than silently ignored."
+  (ltex-plus-fake-with-connection
+    (let ((conn (ltex-plus-fake-ready-connection))
+          (ltex-plus-fake-refuse-shutdown t)
+          (said nil))
+      (cl-letf (((symbol-function 'message)
+                 (lambda (fmt &rest args) (push (apply #'format fmt args) said))))
+        (lsp-ltex-plus--shutdown-connection))
+      (should (= 1 (length (ltex-plus-fake-received 'shutdown))))
+      (should (= 1 (length (ltex-plus-fake-received 'exit))))
+      (should-not (jsonrpc-running-p conn))
+      (should-not (lsp-ltex-plus--live-connection))
+      (should (seq-some (lambda (m) (string-match-p "did not answer" m)) said)))))
+
 (ert-deftest ltex-plus-conn-test-a-dead-server-is-replaced ()
   "After the process ends, the next request for a connection starts a new one."
   (ltex-plus-fake-with-connection
