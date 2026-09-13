@@ -257,13 +257,6 @@ client is broken rather than merely limited."
                              :type 'jsonrpc-error)))
       (should (= -32601 (alist-get 'jsonrpc-error-code (cdr err)))))))
 
-(ert-deftest ltex-plus-conn-test-capability-registrations-are-accepted ()
-  "The bookkeeping requests a server may send are answered, not refused."
-  (ltex-plus-fake-with-connection
-    (ltex-plus-fake-ready-connection)
-    (should-not (jsonrpc-request ltex-plus-fake-peer 'client/registerCapability
-                                 '(:registrations []) :timeout 2))))
-
 (ert-deftest ltex-plus-conn-test-show-message-reaches-the-user ()
   "`window/showMessage' is shown; `window/logMessage' is only logged."
   (ltex-plus-fake-with-connection

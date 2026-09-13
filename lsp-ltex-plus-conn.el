@@ -910,15 +910,14 @@ matches answers to items by position."
   "Answer the server's request METHOD with PARAMS, or refuse it.
 The value returned is the request's result.  An unknown method is
 refused with the protocol's own code for that, so the server learns it
-asked for something this client does not do."
+asked for something this client does not do.  That covers the
+bookkeeping requests too -- capability registration, progress tokens --
+which the client's declared capabilities tell the server not to send."
   (pcase method
     ('workspace/configuration
      (lsp-ltex-plus--answer-configuration params))
     ('ltex/workspaceSpecificConfiguration
      (lsp-ltex-plus--answer-workspace-specific-configuration params))
-    ((or 'client/registerCapability 'client/unregisterCapability
-         'window/workDoneProgress/create)
-     nil)
     ('window/showMessageRequest
      (message "[ltex-ls-plus] %s" (plist-get params :message))
      nil)
