@@ -394,6 +394,25 @@ belong in it: the same document comes back with different mistakes."
                  "unused" (cdr (assoc "Account"
                                       (lsp-ltex-plus-doctor--languagetool-line)))))))
 
+(ert-deftest ltex-plus-doctor-test-the-offline-fallback-is-reported ()
+  "The report says whether the offline fallback is on.
+It is unused without a server URI, and the report says so."
+  (let ((lsp-ltex-plus-lt-server-uri "https://api.languagetoolplus.com")
+        (lsp-ltex-plus-lt-offline-fallback t))
+    (let ((row (cdr (assoc "Offline fallback"
+                           (lsp-ltex-plus-doctor--languagetool-line)))))
+      (should (string-prefix-p "on" row))
+      (should-not (string-match-p "unused" row))))
+  (let ((lsp-ltex-plus-lt-server-uri nil)
+        (lsp-ltex-plus-lt-offline-fallback t))
+    (should (string-match-p
+             "unused" (cdr (assoc "Offline fallback"
+                                  (lsp-ltex-plus-doctor--languagetool-line))))))
+  (let ((lsp-ltex-plus-lt-offline-fallback nil))
+    (should (string-prefix-p
+             "off" (cdr (assoc "Offline fallback"
+                               (lsp-ltex-plus-doctor--languagetool-line)))))))
+
 (ert-deftest ltex-plus-doctor-test-the-log-file-is-the-one-being-written ()
   "The report resolves the log file the running server actually writes.
 `${PID}\=' and a directory name are both filled in by the server, so

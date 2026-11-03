@@ -318,6 +318,13 @@ so a report that did not say which was in use would explain nothing."
                       (lsp-ltex-plus-doctor--options
                        "lsp-ltex-plus-lt-username"
                        "lsp-ltex-plus-lt-api-key")))
+        (cons "Offline fallback"
+              (concat (if lsp-ltex-plus-lt-offline-fallback "on" "off")
+                      (when (and lsp-ltex-plus-lt-offline-fallback
+                                 (not lsp-ltex-plus-lt-server-uri))
+                        " -- and unused, since no server URI is set")
+                      (lsp-ltex-plus-doctor--options
+                       "lsp-ltex-plus-lt-offline-fallback")))
         (cons "Picky rules"
               (concat (if lsp-ltex-plus-additional-rules-enable-picky-rules
                           "on" "off")

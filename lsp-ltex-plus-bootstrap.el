@@ -425,6 +425,8 @@ for the same reason."
     (lsp-ltex-plus-lt-server-uri                       . lsp-ltex-plus--lt-server-uri-safe-p)
     (lsp-ltex-plus-lt-username                         . string-or-null-p)
     (lsp-ltex-plus-lt-api-key                          . string-or-null-p)
+    (lsp-ltex-plus-lt-offline-fallback                 . booleanp)
+    (lsp-ltex-plus-lt-timeout-seconds                  . integerp)
     (lsp-ltex-plus-max-request-size                    . integerp)
     (lsp-ltex-plus-paragraph-cache-ttl-minutes         . integerp)
     (lsp-ltex-plus-paragraph-cache-enabled             . booleanp)

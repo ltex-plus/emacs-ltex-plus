@@ -619,7 +619,9 @@ Its didOpen never goes out, and its mode line does not claim a check."
   '("additionalRules.enablePickyRules" "additionalRules.languageModel"
     "additionalRules.motherTongue" "bibtex.fields" "checkFrequency"
     "clearDiagnosticsWhenClosingFile" "completionEnabled" "diagnosticSeverity"
-    "enabled" "languageToolHttpServerUri" "languageToolOrg.apiKey"
+    "enabled" "languageToolHttpServerOfflineFallback"
+    "languageToolHttpServerTimeoutSeconds" "languageToolHttpServerUri"
+    "languageToolOrg.apiKey"
     "languageToolOrg.username" "language" "latex.commands"
     "latex.environments" "ltex-ls.logLevel" "markdown.nodes"
     "maxRequestSize" "paragraphCacheEnabled" "paragraphCacheTtlMinutes"
@@ -663,11 +665,14 @@ list-valued setting as an empty object, never as null."
   (ltex-plus-test-reset)
   (let ((lsp-ltex-plus-lt-server-uri nil)
         (lsp-ltex-plus-lt-api-key nil)
+        (lsp-ltex-plus-lt-offline-fallback nil)
         (lsp-ltex-plus-completion-enabled nil)
         (lsp-ltex-plus-bibtex-fields nil)
         (lsp-ltex-plus-latex-commands nil))
     (let ((object (lsp-ltex-plus--settings-object)))
       (should (equal (plist-get object :languageToolHttpServerUri) ""))
+      (should (eq (plist-get object :languageToolHttpServerOfflineFallback)
+                  :json-false))
       (should (equal (plist-get (plist-get object :languageToolOrg) :apiKey) ""))
       (should (eq (plist-get object :completionEnabled) :json-false))
       (should (hash-table-p (plist-get (plist-get object :bibtex) :fields)))

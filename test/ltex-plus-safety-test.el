@@ -222,6 +222,8 @@ silently do nothing would say it works."
             lsp-ltex-plus-lt-server-uri
             lsp-ltex-plus-lt-username
             lsp-ltex-plus-lt-api-key
+            lsp-ltex-plus-lt-offline-fallback
+            lsp-ltex-plus-lt-timeout-seconds
             lsp-ltex-plus-max-request-size
             lsp-ltex-plus-paragraph-cache-ttl-minutes
             lsp-ltex-plus-paragraph-cache-enabled

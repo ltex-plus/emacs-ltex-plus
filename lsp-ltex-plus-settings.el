@@ -422,6 +422,33 @@ Only relevant if `lsp-ltex-plus-lt-server-uri' is set.  nil means unset."
   :type '(choice (const :tag "Unset" nil) (string :tag "API key"))
   :group 'lsp-ltex-plus)
 
+(defcustom lsp-ltex-plus-lt-offline-fallback nil
+  "Non-nil means check with the bundled LanguageTool when the server is away.
+When the LanguageTool HTTP server cannot be reached, the text is
+checked with the bundled LanguageTool instead.  Every check tries the
+HTTP server first; the first answer switches back to it.  Any HTTP
+response, including the 403 that Premium returns for wrong
+credentials, is reported as before and does not trigger the fallback.
+Only relevant if `lsp-ltex-plus-lt-server-uri' is set.
+
+Sent as `ltex.languageToolHttpServerOfflineFallback'.  An ltex-ls-plus
+without that setting ignores it."
+  :type 'boolean
+  :group 'lsp-ltex-plus)
+
+(defcustom lsp-ltex-plus-lt-timeout-seconds 60
+  "Seconds the server waits for the LanguageTool HTTP server to answer a check.
+After this many seconds the server stops waiting and closes the
+connection.  With `lsp-ltex-plus-lt-offline-fallback' nil the check
+reports no matches; with it non-nil, the text is checked with the
+bundled LanguageTool.  0 or less means no limit.  Only relevant if
+`lsp-ltex-plus-lt-server-uri' is set.
+
+Sent as `ltex.languageToolHttpServerTimeoutSeconds'.  An ltex-ls-plus
+without that setting ignores it."
+  :type 'integer
+  :group 'lsp-ltex-plus)
+
 (defcustom lsp-ltex-plus-ltex-ls-path nil
   "Path to the root directory of ltex-ls-plus.
 It contains bin and lib subdirectories.  nil (or empty) means the
@@ -1287,6 +1314,11 @@ the server would drop them unread."
                                :languageModel (lsp-ltex-plus--str
                                                lsp-ltex-plus-additional-rules-language-model))
         :languageToolHttpServerUri (lsp-ltex-plus--str lsp-ltex-plus-lt-server-uri)
+        ;; These two are read from ltex-ls-plus PR #223 (issue #222) on;
+        ;; an older server passes over them with no error and no log line.
+        :languageToolHttpServerOfflineFallback (lsp-ltex-plus--bool
+                                                lsp-ltex-plus-lt-offline-fallback)
+        :languageToolHttpServerTimeoutSeconds lsp-ltex-plus-lt-timeout-seconds
         ;; `languageToolOrg.apiKey' is the key the server reads first; the
         ;; `ltex-ls.languageToolOrgApiKey' this client sent up to 1.0.0 has
         ;; been the deprecated fallback since server 14.1.0.
