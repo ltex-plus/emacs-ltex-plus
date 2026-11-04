@@ -46,19 +46,6 @@ jobs:
           git clone https://github.com/riscy/melpazoid.git ~/melpazoid
           pip install ~/melpazoid
 
-      # melpazoid's image builds Emacs from the release tarball on
-      # ftp.gnu.org, and on 2026-10-06 that server did not answer, so the
-      # job failed before checking anything.  The same tarball is fetched
-      # from the kernel.org mirror of the GNU archive instead.  If
-      # melpazoid changes that line, the grep fails this step, so the job
-      # never falls back on ftp.gnu.org without saying so.
-      - name: Fetch Emacs from a GNU mirror
-        run: |
-          dockerfile=~/melpazoid/docker/Dockerfile
-          grep -q 'https://ftp.gnu.org/gnu/emacs/' "$dockerfile"
-          sed -i 's|https://ftp.gnu.org/gnu/emacs/|https://mirrors.kernel.org/gnu/emacs/|' "$dockerfile"
-          grep 'mirrors.kernel.org' "$dockerfile"
-
       - name: Run melpazoid
         env:
           # melpazoid clones the recipe's repository at this branch, the
