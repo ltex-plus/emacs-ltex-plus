@@ -1,11 +1,11 @@
 # Change Log
 
-## [Unreleased]
+## [1.3.0] - 2026-11-04
 
 ### Added
 - **`lsp-ltex-plus-lt-offline-fallback`** (default nil), sent as `ltex.languageToolHttpServerOfflineFallback`. When the LanguageTool HTTP server cannot be reached, the text is checked with the bundled LanguageTool instead. Every check tries the HTTP server first; the first answer switches back to it. Any HTTP response, including the 403 that Premium returns for wrong credentials, is reported as before and does not trigger the fallback.
 - **`lsp-ltex-plus-lt-timeout-seconds`** (default 60), sent as `ltex.languageToolHttpServerTimeoutSeconds`. The server stops waiting for an answer to a check after this many seconds and closes the connection; `0` or less means no limit. The default is 60 s because Premium itself answers a check it cannot finish with HTTP 504 after 60 s.
-- Both are read on every check, so a change takes effect on the next check without a server restart, and a project may set either in its `.dir-locals.el` without Emacs asking. Both need an ltex-ls-plus with [PR #223](https://github.com/ltex-plus/ltex-ls-plus/pull/223); an older server ignores them with no error and no log line.
+- Both are read on every check, so a change takes effect on the next check without a server restart, and a project may set either in its `.dir-locals.el` without Emacs asking. Both need ltex-ls-plus 19.0.0-alpha.54 (the nightly build of 2026-11-03) or later, which has [PR #223](https://github.com/ltex-plus/ltex-ls-plus/pull/223); an older server ignores them with no error and no log line.
 
 ### Fixed
 - **Emacs asked before applying a project's `.dir-locals.el` in the first file of a session.** Emacs reads `.dir-locals.el` when it visits a file, before the dispatcher loads the package, and the declarations of which values are safe were made by the package. They are now in `lsp-ltex-plus-bootstrap.el` and made by `lsp-ltex-plus-enable-for-modes`. A configuration that does not call that function can call the new `lsp-ltex-plus-register-safe-variables` from `:init`; calling it again does nothing.
